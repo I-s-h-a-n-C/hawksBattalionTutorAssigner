@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hawks Battalion Tutoring</title>
+  <script defer src="/__/firebase/12.9.0/firebase-app-compat.js"></script>
+  <script defer src="/__/firebase/12.9.0/firebase-auth-compat.js"></script>
+  <script defer src="/__/firebase/12.9.0/firebase-firestore-compat.js"></script>
+  <script defer src="/__/firebase/init.js?useEmulator=false"></script>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Login screen -->
+    <div id="login-screen" class="screen">
+      <h1>Hawks Battalion Tutoring</h1>
+      <p>Sign in with your Google account.</p>
+      <button type="button" id="btn-google-signin">Sign in with Google</button>
+      <p id="login-error" class="error"></p>
+    </div>
+
+    <!-- Onboarding: Are you staff? -->
+    <div id="onboard-role-screen" class="screen hidden">
+      <h1>Are you staff?</h1>
+      <button type="button" id="btn-yes-staff">Yes, I am staff</button>
+      <button type="button" id="btn-no-staff">No, I need tutoring</button>
+    </div>
+
+    <!-- Onboarding: Staff form -->
+    <div id="onboard-staff-screen" class="screen hidden">
+      <h1>Staff registration</h1>
+      <p><label>Staff code <input type="text" id="staff-code" placeholder="Enter staff code"></label></p>
+      <p id="staff-code-error" class="error"></p>
+      <p><label>Subjects you can tutor (select all that apply)</label></p>
+      <div id="staff-subjects"></div>
+      <p><label>Enrichment period <select id="staff-enrichment"><option value="">Select</option><option value="A">A</option><option value="D">D</option></select></label></p>
+      <p><label>Email <input type="email" id="staff-email" placeholder="your@email.com"></label></p>
+      <p><label>Phone <input type="tel" id="staff-phone" placeholder="Phone number"></label></p>
+      <button type="button" id="btn-staff-submit">Submit</button>
+      <p id="staff-form-error" class="error"></p>
+    </div>
+
+    <!-- Onboarding: Student form -->
+    <div id="onboard-student-screen" class="screen hidden">
+      <h1>Request tutoring</h1>
+      <p><label>Subject you need help with</label></p>
+      <div id="student-subjects"></div>
+      <p><label>Enrichment period <select id="student-enrichment"><option value="">Select</option><option value="A">A</option><option value="D">D</option></select></label></p>
+      <p><label>What do you need tutoring with? <input type="text" id="student-need" placeholder="e.g. quadratic equations"></label></p>
+      <p><label>How urgently? <select id="student-urgency"><option value="">Select</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label></p>
+      <button type="button" id="btn-student-submit">Submit request</button>
+      <p id="student-form-error" class="error"></p>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard-screen" class="screen hidden">
+      <div class="dashboard-header">
+        <h1>Dashboard</h1>
+        <button type="button" id="btn-signout">Sign out</button>
+      </div>
+      <div id="dashboard-student-section" class="hidden">
+        <h2>My requests</h2>
+        <div id="my-requests-list"></div>
+        <h2>New request</h2>
+        <p><label>Subject <select id="dash-subject"></select></label></p>
+        <p><label>Enrichment <select id="dash-enrichment"><option value="">Select</option><option value="A">A</option><option value="D">D</option></select></label></p>
+        <p><label>What do you need? <input type="text" id="dash-need" placeholder="e.g. quadratic equations"></label></p>
+        <p><label>Urgency <select id="dash-urgency"><option value="">Select</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label></p>
+        <button type="button" id="btn-dash-submit">Add request</button>
+        <p id="dash-form-error" class="error"></p>
+      </div>
+      <div id="dashboard-staff-section" class="hidden">
+        <h2>Requests in my subjects</h2>
+        <div id="staff-requests-list"></div>
+      </div>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
