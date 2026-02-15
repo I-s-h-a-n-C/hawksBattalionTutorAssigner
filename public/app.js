@@ -199,7 +199,7 @@
       if (codesSection) codesSection.classList.toggle('hidden', !isInstructor);
       if (isInstructor) loadAdminCodes();
       loadAllRequests();
-      loadAllUsers();
+      loadAllUsers(isInstructor);
     } else if (isStaff) {
       loadStaffRequests(userDoc.get('subjects') || []);
     } else {
@@ -303,7 +303,7 @@
       });
   }
 
-  function loadAllUsers() {
+  function loadAllUsers(currentUserIsInstructor) {
     var listEl = document.getElementById('admin-users-list');
     listEl.innerHTML = '<p class="empty-msg">Loading…</p>';
     db.collection('users').onSnapshot(function (snap) {
@@ -315,16 +315,20 @@
       snap.docs.forEach(function (doc) {
         if (doc.id === auth.currentUser.uid) return;
         var d = doc.data();
+        if (!currentUserIsInstructor && d.isInstructor) return;
         var role = d.isAdmin ? 'Admin' : (d.isInstructor ? 'Instructor' : (d.isStaff ? 'Staff' : 'Student'));
+        var showRemove = currentUserIsInstructor || !d.isInstructor;
         var card = document.createElement('div');
         card.className = 'request-card';
         card.innerHTML =
           '<strong>' + escapeHtml(d.email || doc.id) + '</strong> – ' + role +
           (d.phone ? '<br>Phone: ' + escapeHtml(d.phone) : '') +
-          '<br><button type="button" data-user-id="' + escapeHtml(doc.id) + '">Remove</button>';
-        card.querySelector('button').addEventListener('click', function () {
-          removeUser(doc.id);
-        });
+          (showRemove ? '<br><button type="button" data-user-id="' + escapeHtml(doc.id) + '">Remove</button>' : '');
+        if (showRemove) {
+          card.querySelector('button').addEventListener('click', function () {
+            removeUser(doc.id);
+          });
+        }
         listEl.appendChild(card);
       });
     });
