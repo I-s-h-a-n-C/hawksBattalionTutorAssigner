@@ -1,0 +1,125 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 16px;
+  font-family: Arial, sans-serif;
+  background: #f5f5f5;
+  color: #333;
+}
+
+.screen {
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 24px;
+  background: #fff;
+  border: 1px solid #ccc;
+}
+
+.screen.hidden,
+.hidden {
+  display: none;
+}
+
+h1 {
+  margin-top: 0;
+  font-size: 1.5em;
+}
+
+h2 {
+  font-size: 1.2em;
+  margin-top: 24px;
+}
+
+p {
+  margin: 12px 0;
+}
+
+label {
+  display: block;
+  margin-bottom: 4px;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="tel"],
+select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #999;
+  font-size: 1em;
+}
+
+button {
+  padding: 10px 16px;
+  margin: 8px 8px 8px 0;
+  border: 1px solid #666;
+  background: #e0e0e0;
+  font-size: 1em;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #d0d0d0;
+}
+
+.error {
+  color: #c00;
+  font-size: 0.9em;
+  margin-top: 8px;
+}
+
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.checkbox-group label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.radio-group label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 16px;
+  cursor: pointer;
+}
+
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.request-card {
+  border: 1px solid #ccc;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: #fafafa;
+}
+
+.request-card .meta {
+  font-size: 0.9em;
+  color: #666;
+  margin-top: 8px;
+}
+
+.request-card button {
+  margin-top: 8px;
+}
+
+.empty-msg {
+  color: #666;
+  font-style: italic;
+}
