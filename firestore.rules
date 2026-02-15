@@ -6,16 +6,27 @@ service cloud.firestore {
       let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
       return request.auth != null && userDoc != null && userDoc.data.isAdmin == true;
     }
+    function isInstructor() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return request.auth != null && userDoc != null && userDoc.data.isInstructor == true;
+    }
+    function canManageAll() {
+      return isAdmin() || isInstructor();
+    }
     match /users/{userId} {
-      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow read: if request.auth != null && (request.auth.uid == userId || canManageAll());
       allow create, update: if request.auth != null && request.auth.uid == userId;
-      allow delete: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow delete: if request.auth != null && (request.auth.uid == userId || canManageAll());
     }
     match /tutoringRequests/{requestId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
       allow update, delete: if request.auth != null
-        && (resource.data.userId == request.auth.uid || isAdmin());
+        && (resource.data.userId == request.auth.uid || canManageAll());
+    }
+    match /config/codes {
+      allow read: if request.auth != null;
+      allow write: if isInstructor();
     }
   }
 }

@@ -1,3 +1,6 @@
+const { SDK_VERSION } = require("firebase/app");
+const { useEffect } = require("react");
+
 (function () {
   'use strict';
 
@@ -18,11 +21,52 @@
     'Other'
   ];
 
-  var STAFF_CODE = 'hawksstaff';
-  var ADMIN_CODE = 'hawksadmin';
+  var DEFAULT_STAFF_CODE = 'hawksstaff';
+  var DEFAULT_ADMIN_CODE = 'hawksadmin';
+  var DEFAULT_INSTRUCTOR_CODE = 'hawksinstructor';
+
+  var codesCache = null;
 
   var db = firebase.firestore();
   var auth = firebase.auth();
+
+  function getCodes() {
+    if (codesCache) return Promise.resolve(codesCache);
+    return db.collection('config').doc('codes').get().then(function (snap) {
+      if (snap.exists && snap.data()) {
+        codesCache = snap.data();
+        return codesCache;
+      }
+      codesCache = {
+        staffCode: DEFAULT_STAFF_CODE,
+        adminCode: DEFAULT_ADMIN_CODE,
+        instructorCode: DEFAULT_INSTRUCTOR_CODE
+      };
+      return codesCache;
+    }).catch(function () {
+      codesCache = {
+        staffCode: DEFAULT_STAFF_CODE,
+        adminCode: DEFAULT_ADMIN_CODE,
+        instructorCode: DEFAULT_INSTRUCTOR_CODE
+      };
+      return codesCache;
+    });
+  }
+
+  function clearCodesCache() {
+    codesCache = null;
+  }
+
+  function loadAdminCodes() {
+    getCodes().then(function (codes) {
+      var staffEl = document.getElementById('admin-staff-code');
+      var adminEl = document.getElementById('admin-admin-code');
+      var instructorEl = document.getElementById('admin-instructor-code');
+      if (staffEl) staffEl.value = (codes && codes.staffCode) || '';
+      if (adminEl) adminEl.value = (codes && codes.adminCode) || '';
+      if (instructorEl) instructorEl.value = (codes && codes.instructorCode) || '';
+    });
+  }
 
   var screens = {
     login: document.getElementById('login-screen'),
@@ -135,6 +179,7 @@
   function showDashboard(userDoc) {
     showScreen('dashboard');
     var isAdmin = userDoc && userDoc.get('isAdmin') === true;
+    var isInstructor = userDoc && userDoc.get('isInstructor') === true;
     var isStaff = userDoc && userDoc.get('isStaff') === true;
 
     var studentSection = document.getElementById('dashboard-student-section');
@@ -144,7 +189,7 @@
     studentSection.classList.add('hidden');
     staffSection.classList.add('hidden');
     adminSection.classList.add('hidden');
-    if (isAdmin) {
+    if (isAdmin || isInstructor) {
       adminSection.classList.remove('hidden');
     } else if (isStaff) {
       staffSection.classList.remove('hidden');
@@ -152,7 +197,10 @@
       studentSection.classList.remove('hidden');
     }
 
-    if (isAdmin) {
+    if (isAdmin || isInstructor) {
+      var codesSection = document.getElementById('admin-codes-section');
+      if (codesSection) codesSection.classList.toggle('hidden', !isInstructor);
+      if (isInstructor) loadAdminCodes();
       loadAllRequests();
       loadAllUsers();
     } else if (isStaff) {
@@ -270,7 +318,7 @@
       snap.docs.forEach(function (doc) {
         if (doc.id === auth.currentUser.uid) return;
         var d = doc.data();
-        var role = d.isAdmin ? 'Admin' : (d.isStaff ? 'Staff' : 'Student');
+        var role = d.isAdmin ? 'Admin' : (d.isInstructor ? 'Instructor' : (d.isStaff ? 'Staff' : 'Student'));
         var card = document.createElement('div');
         card.className = 'request-card';
         card.innerHTML =
@@ -376,15 +424,44 @@
 
     var errEl = document.getElementById('staff-form-error');
     var codeErr = document.getElementById('staff-code-error');
-    codeErr.textContent = '';
     errEl.textContent = '';
+    codeErr.textContent = '';
 
-    var isAdmin = (code === ADMIN_CODE);
-    if (code !== STAFF_CODE && !isAdmin) {
-      codeErr.textContent = 'Invalid staff code.';
-      return;
-    }
-    if (!isAdmin) {
+    getCodes().then(function (codes) {
+      var staffCode = (codes && codes.staffCode) || DEFAULT_STAFF_CODE;
+      var adminCode = (codes && codes.adminCode) || DEFAULT_ADMIN_CODE;
+      var instructorCode = (codes && codes.instructorCode) || DEFAULT_INSTRUCTOR_CODE;
+
+      var isAdmin = (code === adminCode);
+      var isInstructor = (code === instructorCode);
+      var isStaff = (code === staffCode);
+      if (!isStaff && !isAdmin && !isInstructor) {
+        codeErr.textContent = 'Invalid staff code.';
+        return;
+      }
+      runStaffSubmit(code, isAdmin, isInstructor, enrichment, email, phone, subjects, errEl, codeErr);
+    });
+  });
+
+  function runStaffSubmit(code, isAdmin, isInstructor, enrichment, email, phone, subjects, errEl, codeErr) {
+    if (isInstructor) {
+      // Instructors: code only, no subjects/enrichment
+    } else if (isAdmin) {
+      // Admins must sign up to teach: require full staff form
+      if (subjects.length === 0) {
+        errEl.textContent = 'Select at least one subject.';
+        return;
+      }
+      if (enrichment !== 'A' && enrichment !== 'D') {
+        errEl.textContent = 'Select enrichment A or D.';
+        return;
+      }
+      if (!email) {
+        errEl.textContent = 'Enter your email.';
+        return;
+      }
+    } else {
+      // Staff
       if (subjects.length === 0) {
         errEl.textContent = 'Select at least one subject.';
         return;
@@ -401,14 +478,26 @@
 
     var uid = auth.currentUser.uid;
     var payload = {
-      isStaff: !isAdmin,
-      isAdmin: isAdmin,
       staffCodeEntered: true,
       completedOnboarding: true
     };
-    if (isAdmin) {
+    if (isInstructor) {
+      payload.isInstructor = true;
+      payload.isStaff = false;
+      payload.isAdmin = false;
       payload.email = auth.currentUser.email || '';
+    } else if (isAdmin) {
+      payload.isAdmin = true;
+      payload.isStaff = true;
+      payload.isInstructor = false;
+      payload.subjects = subjects;
+      payload.enrichment = enrichment;
+      payload.email = email;
+      payload.phone = phone || null;
     } else {
+      payload.isStaff = true;
+      payload.isAdmin = false;
+      payload.isInstructor = false;
       payload.subjects = subjects;
       payload.enrichment = enrichment;
       payload.email = email;
@@ -421,7 +510,7 @@
     }).catch(function (err) {
       errEl.textContent = err.message || 'Save failed';
     });
-  });
+  }
 
   document.getElementById('btn-student-submit').addEventListener('click', function () {
     var subject = getStudentSubject();
@@ -468,6 +557,32 @@
 
   document.getElementById('btn-signout').addEventListener('click', function () {
     auth.signOut();
+  });
+
+  document.getElementById('btn-admin-save-codes').addEventListener('click', function () {
+    var staffCode = document.getElementById('admin-staff-code').value.trim();
+    var adminCode = document.getElementById('admin-admin-code').value.trim();
+    var instructorCode = document.getElementById('admin-instructor-code').value.trim();
+    var errEl = document.getElementById('admin-codes-error');
+    errEl.textContent = '';
+    if (!staffCode || !adminCode || !instructorCode) {
+      errEl.textContent = 'All three codes are required.';
+      return;
+    }
+    db.collection('config').doc('codes').set({
+      staffCode: staffCode,
+      adminCode: adminCode,
+      instructorCode: instructorCode
+    }).then(function () {
+      clearCodesCache();
+      errEl.textContent = '';
+      errEl.style.color = '';
+      errEl.textContent = 'Codes saved.';
+      errEl.style.color = '#080';
+    }).catch(function (err) {
+      errEl.style.color = '';
+      errEl.textContent = err.message || 'Save failed';
+    });
   });
 
   document.getElementById('btn-dash-submit').addEventListener('click', function () {
