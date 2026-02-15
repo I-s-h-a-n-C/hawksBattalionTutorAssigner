@@ -100,13 +100,92 @@
     container.appendChild(group);
   }
 
-  function getCheckedSubjects(namePrefix) {
-    var nodes = document.querySelectorAll('input[name="' + namePrefix + '"]:checked');
-    return Array.prototype.map.call(nodes, function (n) { return n.value; });
+  function getSubjectNames(subjects) {
+    if (!subjects || !subjects.length) return [];
+    return subjects.map(function (s) { return typeof s === 'string' ? s : (s.name || s); });
+  }
+
+  function normalizeSubjects(subjects) {
+    if (!subjects || !subjects.length) return [];
+    return subjects.map(function (s) {
+      if (typeof s === 'string') return { name: s, ap: false };
+      return { name: s.name || '', ap: !!s.ap };
+    });
+  }
+
+  var staffFormSubjects = [];
+  var dashStaffSubjects = [];
+
+  function renderStaffSubjectSelectOptions(selectId) {
+    var sel = document.getElementById(selectId);
+    if (!sel) return;
+    sel.innerHTML = '';
+    var opt0 = document.createElement('option');
+    opt0.value = '';
+    opt0.textContent = 'Select...';
+    sel.appendChild(opt0);
+    SUBJECTS.forEach(function (s) {
+      var opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s;
+      sel.appendChild(opt);
+    });
+    var optCustom = document.createElement('option');
+    optCustom.value = '__custom__';
+    optCustom.textContent = 'Custom...';
+    sel.appendChild(optCustom);
+  }
+
+  function renderStaffSubjectList(containerId, list) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '';
+    list.forEach(function (item, index) {
+      var row = document.createElement('div');
+      row.className = 'subject-row';
+      var label = document.createElement('span');
+      label.textContent = item.name + (item.ap ? ' (AP)' : '');
+      var apCb = document.createElement('input');
+      apCb.type = 'checkbox';
+      apCb.checked = !!item.ap;
+      apCb.id = containerId + '-ap-' + index;
+      apCb.addEventListener('change', function () {
+        item.ap = apCb.checked;
+        renderStaffSubjectList(containerId, list);
+      });
+      var apLabel = document.createElement('label');
+      apLabel.htmlFor = apCb.id;
+      apLabel.textContent = ' AP';
+      apLabel.style.marginLeft = '8px';
+      var removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.textContent = 'Remove';
+      removeBtn.addEventListener('click', function () {
+        list.splice(index, 1);
+        renderStaffSubjectList(containerId, list);
+      });
+      row.appendChild(label);
+      row.appendChild(apCb);
+      row.appendChild(apLabel);
+      row.appendChild(removeBtn);
+      container.appendChild(row);
+    });
+  }
+
+  function getStaffSubjectFromPicker(selectId, customWrapId, customInputId) {
+    var sel = document.getElementById(selectId);
+    var customInput = document.getElementById(customInputId);
+    var val = sel && sel.value;
+    if (val === '__custom__' && customInput) {
+      val = customInput.value.trim();
+      if (val) customInput.value = '';
+    }
+    return val || null;
   }
 
   function renderSubjectSelect(selectId, optionalEmpty) {
     var sel = document.getElementById(selectId);
+    if (!sel) return;
     sel.innerHTML = '';
     if (optionalEmpty) {
       var opt = document.createElement('option');
@@ -141,36 +220,29 @@
     showScreen('staffForm');
     document.getElementById('staff-code-error').textContent = '';
     document.getElementById('staff-form-error').textContent = '';
-    renderSubjectCheckboxes('staff-subjects', 'staff-subj');
+    staffFormSubjects.length = 0;
+    renderStaffSubjectSelectOptions('staff-subject-select');
+    renderStaffSubjectList('staff-subjects-list', staffFormSubjects);
+    var customWrap = document.getElementById('staff-custom-wrap');
+    var staffSelect = document.getElementById('staff-subject-select');
+    if (customWrap) customWrap.classList.add('hidden');
+    if (staffSelect) {
+      staffSelect.addEventListener('change', function () {
+        if (customWrap) customWrap.classList.toggle('hidden', staffSelect.value !== '__custom__');
+      });
+    }
     document.getElementById('staff-email').value = auth.currentUser ? auth.currentUser.email : '';
   }
 
   function showOnboardStudent() {
     showScreen('studentForm');
     document.getElementById('student-form-error').textContent = '';
-    var container = document.getElementById('student-subjects');
-    container.innerHTML = '';
-    var group = document.createElement('div');
-    group.className = 'radio-group';
-    SUBJECTS.forEach(function (subj) {
-      var id = 'student-subj-' + subj.replace(/\s/g, '-');
-      var label = document.createElement('label');
-      var radio = document.createElement('input');
-      radio.type = 'radio';
-      radio.name = 'student-subj';
-      radio.value = subj;
-      radio.id = id;
-      label.htmlFor = id;
-      label.appendChild(radio);
-      label.appendChild(document.createTextNode(subj));
-      group.appendChild(label);
-    });
-    container.appendChild(group);
+    renderSubjectSelect('student-subject-select', true);
   }
 
   function getStudentSubject() {
-    var r = document.querySelector('input[name="student-subj"]:checked');
-    return r ? r.value : '';
+    var sel = document.getElementById('student-subject-select');
+    return sel && sel.value ? sel.value : '';
   }
 
   function showDashboard(userDoc) {
@@ -186,13 +258,10 @@
     studentSection.classList.add('hidden');
     staffSection.classList.add('hidden');
     adminSection.classList.add('hidden');
-    if (isAdmin || isInstructor) {
-      adminSection.classList.remove('hidden');
-    } else if (isStaff) {
-      staffSection.classList.remove('hidden');
-    } else {
-      studentSection.classList.remove('hidden');
-    }
+    if (isAdmin || isInstructor) adminSection.classList.remove('hidden');
+    if (isStaff) staffSection.classList.remove('hidden');
+    if (!isAdmin && !isInstructor && !isStaff) studentSection.classList.remove('hidden');
+    if (isAdmin || isStaff) studentSection.classList.remove('hidden');
 
     if (isAdmin || isInstructor) {
       var codesSection = document.getElementById('admin-codes-section');
@@ -200,9 +269,16 @@
       if (isInstructor) loadAdminCodes();
       loadAllRequests();
       loadAllUsers(isInstructor);
-    } else if (isStaff) {
+    }
+    if (isStaff) {
+      dashStaffSubjects = normalizeSubjects(userDoc.get('subjects') || []);
+      renderStaffSubjectSelectOptions('dash-staff-subject-select');
+      renderStaffSubjectList('dash-staff-subjects-list', dashStaffSubjects);
       loadStaffRequests(userDoc.get('subjects') || []);
-    } else {
+      renderSubjectSelect('dash-subject', true);
+      loadMyRequests();
+    }
+    if (!isAdmin && !isInstructor && !isStaff) {
       renderSubjectSelect('dash-subject', true);
       loadMyRequests();
     }
@@ -241,7 +317,8 @@
   function loadStaffRequests(mySubjects) {
     var listEl = document.getElementById('staff-requests-list');
     listEl.innerHTML = '<p class="empty-msg">Loading…</p>';
-    if (mySubjects.length === 0) {
+    var subjectNames = getSubjectNames(mySubjects);
+    if (subjectNames.length === 0) {
       listEl.innerHTML = '<p class="empty-msg">You have no subjects selected. Requests will appear here when they match your tutoring subjects.</p>';
       return;
     }
@@ -250,7 +327,7 @@
       .onSnapshot(function (snap) {
         listEl.innerHTML = '';
         var filtered = snap.docs.filter(function (doc) {
-          return mySubjects.indexOf(doc.data().subject) !== -1;
+          return subjectNames.indexOf(doc.data().subject) !== -1;
         });
         if (filtered.length === 0) {
           listEl.innerHTML = '<p class="empty-msg">No matching requests right now.</p>';
@@ -416,12 +493,23 @@
     showOnboardRole();
   });
 
+  document.getElementById('btn-staff-add-subject').addEventListener('click', function () {
+    var name = getStaffSubjectFromPicker('staff-subject-select', 'staff-custom-wrap', 'staff-custom-name');
+    if (!name) return;
+    if (staffFormSubjects.some(function (s) { return s.name === name; })) return;
+    staffFormSubjects.push({ name: name, ap: false });
+    renderStaffSubjectList('staff-subjects-list', staffFormSubjects);
+    var sel = document.getElementById('staff-subject-select');
+    if (sel) sel.value = '';
+    document.getElementById('staff-custom-wrap').classList.add('hidden');
+  });
+
   document.getElementById('btn-staff-submit').addEventListener('click', function () {
     var code = document.getElementById('staff-code').value.trim();
     var enrichment = document.getElementById('staff-enrichment').value;
     var email = document.getElementById('staff-email').value.trim();
     var phone = document.getElementById('staff-phone').value.trim();
-    var subjects = getCheckedSubjects('staff-subj');
+    var subjects = staffFormSubjects.slice();
 
     var errEl = document.getElementById('staff-form-error');
     var codeErr = document.getElementById('staff-code-error');
@@ -558,6 +646,36 @@
 
   document.getElementById('btn-signout').addEventListener('click', function () {
     auth.signOut();
+  });
+
+  var dashStaffSelect = document.getElementById('dash-staff-subject-select');
+  var dashStaffCustomWrap = document.getElementById('dash-staff-custom-wrap');
+  if (dashStaffSelect && dashStaffCustomWrap) {
+    dashStaffSelect.addEventListener('change', function () {
+      dashStaffCustomWrap.classList.toggle('hidden', dashStaffSelect.value !== '__custom__');
+    });
+  }
+  document.getElementById('btn-dash-staff-add-subject').addEventListener('click', function () {
+    var name = getStaffSubjectFromPicker('dash-staff-subject-select', 'dash-staff-custom-wrap', 'dash-staff-custom-name');
+    if (!name) return;
+    if (dashStaffSubjects.some(function (s) { return s.name === name; })) return;
+    dashStaffSubjects.push({ name: name, ap: false });
+    renderStaffSubjectList('dash-staff-subjects-list', dashStaffSubjects);
+    var sel = document.getElementById('dash-staff-subject-select');
+    if (sel) sel.value = '';
+    if (dashStaffCustomWrap) dashStaffCustomWrap.classList.add('hidden');
+  });
+  document.getElementById('btn-dash-staff-save-subjects').addEventListener('click', function () {
+    var errEl = document.getElementById('dash-staff-subjects-error');
+    errEl.textContent = '';
+    var uid = auth.currentUser.uid;
+    db.collection('users').doc(uid).update({ subjects: dashStaffSubjects }).then(function () {
+      errEl.textContent = 'Classes saved.';
+      errEl.style.color = '#080';
+    }).catch(function (err) {
+      errEl.style.color = '';
+      errEl.textContent = err.message || 'Save failed';
+    });
   });
 
   document.getElementById('btn-admin-save-codes').addEventListener('click', function () {
