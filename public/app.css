@@ -18,7 +18,8 @@ body {
   border: 1px solid #ccc;
 }
 
-.screen.hidden {
+.screen.hidden,
+.hidden {
   display: none;
 }
 
