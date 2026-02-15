@@ -1,6 +1,13 @@
 (function () {
   'use strict';
 
+  if (typeof firebase === 'undefined' || !firebase.apps || !firebase.apps.length) {
+    document.getElementById('login-screen').querySelector('p').innerHTML =
+      'Firebase is not loaded. Add your project config to <strong>public/firebase-config.js</strong> (get it from Firebase Console → Project settings → Your apps).';
+    document.getElementById('btn-google-signin').style.display = 'none';
+    throw new Error('Firebase not initialized. Check firebase-config.js.');
+  }
+
   var SUBJECTS = [
     'Math',
     'Science',
