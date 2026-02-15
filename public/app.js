@@ -19,6 +19,7 @@
   ];
 
   var STAFF_CODE = 'hawksstaff';
+  var ADMIN_CODE = 'hawksadmin';
 
   var db = firebase.firestore();
   var auth = firebase.auth();
@@ -133,11 +134,28 @@
 
   function showDashboard(userDoc) {
     showScreen('dashboard');
+    var isAdmin = userDoc && userDoc.get('isAdmin') === true;
     var isStaff = userDoc && userDoc.get('isStaff') === true;
-    document.getElementById('dashboard-student-section').classList.toggle('hidden', isStaff);
-    document.getElementById('dashboard-staff-section').classList.toggle('hidden', !isStaff);
 
-    if (isStaff) {
+    var studentSection = document.getElementById('dashboard-student-section');
+    var staffSection = document.getElementById('dashboard-staff-section');
+    var adminSection = document.getElementById('dashboard-admin-section');
+
+    studentSection.classList.add('hidden');
+    staffSection.classList.add('hidden');
+    adminSection.classList.add('hidden');
+    if (isAdmin) {
+      adminSection.classList.remove('hidden');
+    } else if (isStaff) {
+      staffSection.classList.remove('hidden');
+    } else {
+      studentSection.classList.remove('hidden');
+    }
+
+    if (isAdmin) {
+      loadAllRequests();
+      loadAllUsers();
+    } else if (isStaff) {
       loadStaffRequests(userDoc.get('subjects') || []);
     } else {
       renderSubjectSelect('dash-subject', true);
@@ -209,6 +227,76 @@
   function removeRequest(id) {
     db.collection('tutoringRequests').doc(id).delete().catch(function (err) {
       alert('Could not remove: ' + (err.message || err));
+    });
+  }
+
+  function loadAllRequests() {
+    var listEl = document.getElementById('admin-requests-list');
+    listEl.innerHTML = '<p class="empty-msg">Loading…</p>';
+    db.collection('tutoringRequests')
+      .orderBy('createdAt', 'desc')
+      .onSnapshot(function (snap) {
+        listEl.innerHTML = '';
+        if (snap.empty) {
+          listEl.innerHTML = '<p class="empty-msg">No requests.</p>';
+          return;
+        }
+        snap.docs.forEach(function (doc) {
+          var d = doc.data();
+          var card = document.createElement('div');
+          card.className = 'request-card';
+          card.innerHTML =
+            '<strong>' + escapeHtml(d.subject) + '</strong> – ' + escapeHtml(d.needDescription || '') +
+            '<br>Enrichment: ' + (d.enrichment || '') + ', Urgency: ' + (d.urgency || '') +
+            '<p class="meta">' + (d.createdAt ? formatDate(d.createdAt) : '') + '</p>' +
+            '<button type="button" data-request-id="' + escapeHtml(doc.id) + '">Delete</button>';
+          card.querySelector('button').addEventListener('click', function () {
+            removeRequest(doc.id);
+          });
+          listEl.appendChild(card);
+        });
+      });
+  }
+
+  function loadAllUsers() {
+    var listEl = document.getElementById('admin-users-list');
+    listEl.innerHTML = '<p class="empty-msg">Loading…</p>';
+    db.collection('users').onSnapshot(function (snap) {
+      listEl.innerHTML = '';
+      if (snap.empty) {
+        listEl.innerHTML = '<p class="empty-msg">No users.</p>';
+        return;
+      }
+      snap.docs.forEach(function (doc) {
+        if (doc.id === auth.currentUser.uid) return;
+        var d = doc.data();
+        var role = d.isAdmin ? 'Admin' : (d.isStaff ? 'Staff' : 'Student');
+        var card = document.createElement('div');
+        card.className = 'request-card';
+        card.innerHTML =
+          '<strong>' + escapeHtml(d.email || doc.id) + '</strong> – ' + role +
+          (d.phone ? '<br>Phone: ' + escapeHtml(d.phone) : '') +
+          '<br><button type="button" data-user-id="' + escapeHtml(doc.id) + '">Remove</button>';
+        card.querySelector('button').addEventListener('click', function () {
+          removeUser(doc.id);
+        });
+        listEl.appendChild(card);
+      });
+    });
+  }
+
+  function removeUser(uid) {
+    if (!confirm('Remove this user? Their profile and (if student) all their requests will be deleted.')) return;
+    db.collection('tutoringRequests').where('userId', '==', uid).get().then(function (snap) {
+      var batch = db.batch();
+      snap.docs.forEach(function (doc) { batch.delete(doc.ref); });
+      batch.delete(db.collection('users').doc(uid));
+      return batch.commit();
+    }).then(function () {
+      loadAllUsers();
+      loadAllRequests();
+    }).catch(function (err) {
+      alert('Could not remove user: ' + (err.message || err));
     });
   }
 
@@ -291,33 +379,42 @@
     codeErr.textContent = '';
     errEl.textContent = '';
 
-    if (code !== STAFF_CODE) {
+    var isAdmin = (code === ADMIN_CODE);
+    if (code !== STAFF_CODE && !isAdmin) {
       codeErr.textContent = 'Invalid staff code.';
       return;
     }
-    if (subjects.length === 0) {
-      errEl.textContent = 'Select at least one subject.';
-      return;
-    }
-    if (enrichment !== 'A' && enrichment !== 'D') {
-      errEl.textContent = 'Select enrichment A or D.';
-      return;
-    }
-    if (!email) {
-      errEl.textContent = 'Enter your email.';
-      return;
+    if (!isAdmin) {
+      if (subjects.length === 0) {
+        errEl.textContent = 'Select at least one subject.';
+        return;
+      }
+      if (enrichment !== 'A' && enrichment !== 'D') {
+        errEl.textContent = 'Select enrichment A or D.';
+        return;
+      }
+      if (!email) {
+        errEl.textContent = 'Enter your email.';
+        return;
+      }
     }
 
     var uid = auth.currentUser.uid;
-    db.collection('users').doc(uid).set({
-      isStaff: true,
+    var payload = {
+      isStaff: !isAdmin,
+      isAdmin: isAdmin,
       staffCodeEntered: true,
-      subjects: subjects,
-      enrichment: enrichment,
-      email: email,
-      phone: phone || null,
       completedOnboarding: true
-    }, { merge: true }).then(function () {
+    };
+    if (isAdmin) {
+      payload.email = auth.currentUser.email || '';
+    } else {
+      payload.subjects = subjects;
+      payload.enrichment = enrichment;
+      payload.email = email;
+      payload.phone = phone || null;
+    }
+    db.collection('users').doc(uid).set(payload, { merge: true }).then(function () {
       return getCurrentUserDoc();
     }).then(function (snap) {
       showDashboard(snap);
@@ -402,3 +499,5 @@
 
   auth.onAuthStateChanged(handleAuthState);
 })();
+
+

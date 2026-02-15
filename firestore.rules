@@ -2,13 +2,20 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isAdmin() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return request.auth != null && userDoc != null && userDoc.data.isAdmin == true;
+    }
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow create, update: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && (request.auth.uid == userId || isAdmin());
     }
     match /tutoringRequests/{requestId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null
+        && (resource.data.userId == request.auth.uid || isAdmin());
     }
   }
 }
