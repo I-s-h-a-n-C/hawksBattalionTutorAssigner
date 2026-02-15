@@ -271,6 +271,14 @@
     });
   });
 
+  document.getElementById('btn-staff-back').addEventListener('click', function () {
+    showOnboardRole();
+  });
+
+  document.getElementById('btn-student-back').addEventListener('click', function () {
+    showOnboardRole();
+  });
+
   document.getElementById('btn-staff-submit').addEventListener('click', function () {
     var code = document.getElementById('staff-code').value.trim();
     var enrichment = document.getElementById('staff-enrichment').value;
