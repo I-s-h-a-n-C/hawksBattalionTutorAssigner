@@ -1,6 +1,3 @@
-const { SDK_VERSION } = require("firebase/app");
-const { useEffect } = require("react");
-
 (function () {
   'use strict';
 
