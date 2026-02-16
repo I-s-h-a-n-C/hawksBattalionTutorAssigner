@@ -119,6 +119,24 @@ button:hover {
   margin-top: 8px;
 }
 
+.request-status {
+  display: inline-block;
+  padding: 4px 8px;
+  border: 1px solid #999;
+  border-radius: 3px;
+  font-size: 0.85em;
+  margin: 8px 0;
+  background: #fff;
+}
+
+.request-status-select {
+  width: 100%;
+  padding: 6px;
+  margin: 8px 0;
+  border: 1px solid #999;
+  font-size: 0.95em;
+}
+
 .empty-msg {
   color: #666;
   font-style: italic;
@@ -132,68 +150,32 @@ button:hover {
   flex-wrap: wrap;
 }
 
-.request-status {
-  display: inline-block;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 0.85em;
-  font-weight: bold;
-  margin-top: 4px;
-}
-
-.status-pending {
-  background: #fff3cd;
-  color: #856404;
-}
-
-.status-matched {
-  background: #cfe2ff;
-  color: #084298;
-}
-
-.status-in-progress {
-  background: #d1e7dd;
-  color: #0f5132;
-}
-
-.status-completed {
-  background: #d4edda;
-  color: #155724;
-}
-
-.stats-section {
-  margin-bottom: 20px;
-  padding: 12px;
-  background: #f8f9fa;
-  border-left: 4px solid #007bff;
-}
-
-.stats-section h3 {
-  margin-top: 0;
+h3 {
   font-size: 1.1em;
-  color: #007bff;
+  margin-top: 16px;
+  margin-bottom: 12px;
 }
 
-.stats-section p {
-  margin: 8px 0;
+h4 {
+  font-size: 1em;
+  margin: 12px 0 8px 0;
 }
 
-.btn-remove {
-  background: #f8d7da;
-  border-color: #c00;
-  color: #721c24;
+.stats-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
 }
 
-.btn-remove:hover {
-  background: #f5c6cb;
+.stat-chart {
+  border: 1px solid #ccc;
+  padding: 16px;
+  background: #fafafa;
 }
 
-.btn-complete {
-  background: #d4edda;
-  border-color: #28a745;
-  color: #155724;
-}
-
-.btn-complete:hover {
-  background: #c3e6cb;
+@media (max-width: 768px) {
+  .stats-container {
+    grid-template-columns: 1fr;
+  }
 }

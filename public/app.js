@@ -1,6 +1,3 @@
-const { SDK_VERSION } = require("firebase/app");
-const { UNSAFE_AwaitContextProvider, data } = require("react-router-dom");
-
 (function () {
   'use strict';
 
@@ -257,23 +254,10 @@ const { UNSAFE_AwaitContextProvider, data } = require("react-router-dom");
     var studentSection = document.getElementById('dashboard-student-section');
     var staffSection = document.getElementById('dashboard-staff-section');
     var adminSection = document.getElementById('dashboard-admin-section');
-    var titleEl = document.getElementById('dashboard-title');
 
     studentSection.classList.add('hidden');
     staffSection.classList.add('hidden');
     adminSection.classList.add('hidden');
-    
-    // Set dashboard title based on role
-    if (isInstructor) {
-      titleEl.textContent = 'Instructor Dashboard';
-    } else if (isAdmin) {
-      titleEl.textContent = 'Admin Dashboard';
-    } else if (isStaff) {
-      titleEl.textContent = 'Staff Dashboard';
-    } else {
-      titleEl.textContent = 'Member Dashboard';
-    }
-    
     if (isAdmin || isInstructor) adminSection.classList.remove('hidden');
     if (isStaff) staffSection.classList.remove('hidden');
     if (!isAdmin && !isInstructor && !isStaff) studentSection.classList.remove('hidden');
@@ -281,11 +265,13 @@ const { UNSAFE_AwaitContextProvider, data } = require("react-router-dom");
 
     if (isAdmin || isInstructor) {
       var codesSection = document.getElementById('admin-codes-section');
+      var statsSection = document.getElementById('admin-stats-section');
       if (codesSection) codesSection.classList.toggle('hidden', !isInstructor);
+      if (statsSection) statsSection.classList.toggle('hidden', !isInstructor);
       if (isInstructor) loadAdminCodes();
+      if (isInstructor) loadAdminStats();
       loadAllRequests();
       loadAllUsers(isInstructor);
-      loadAdminStats();
     }
     if (isStaff) {
       dashStaffSubjects = normalizeSubjects(userDoc.get('subjects') || []);
@@ -318,25 +304,22 @@ const { UNSAFE_AwaitContextProvider, data } = require("react-router-dom");
           var d = doc.data();
           var card = document.createElement('div');
           card.className = 'request-card';
-          var statusClass = 'status-' + (d.status || 'pending');
-          var statusText = d.status || 'pending';
           card.innerHTML =
             '<strong>' + escapeHtml(d.subject) + '</strong> – ' + escapeHtml(d.needDescription || '') +
             '<br>Enrichment: ' + (d.enrichment || '') + ', Urgency: ' + (d.urgency || '') +
             (d.requesterEmail ? '<br><strong>Email: ' + escapeHtml(d.requesterEmail) + '</strong>' : '') +
-            '<br><span class="request-status ' + statusClass + '">Status: ' + statusText + '</span>' +
+            '<div class="request-status">Status: ' + escapeHtml(d.status || 'pending') + '</div>' +
             '<p class="meta">' + (d.createdAt ? 'Added ' + formatDate(d.createdAt) : '') + '</p>' +
-            '<button type="button" class="btn-remove" data-request-id="' + escapeHtml(doc.id) + '">Remove</button>' +
-            (d.status !== 'completed' ? '<button type="button" class="btn-complete" data-request-id="' + escapeHtml(doc.id) + '">Mark as Met</button>' : '');
-          card.querySelector('.btn-remove').addEventListener('click', function () {
+            '<button type="button" data-request-id="' + escapeHtml(doc.id) + '" data-action="complete">Mark as completed</button> ' +
+            '<button type="button" data-request-id="' + escapeHtml(doc.id) + '" data-action="remove">Remove</button>';
+          var completeBtn = card.querySelector('[data-action="complete"]');
+          var removeBtn = card.querySelector('[data-action="remove"]');
+          completeBtn.addEventListener('click', function () {
+            db.collection('tutoringRequests').doc(doc.id).update({ status: 'completed' });
+          });
+          removeBtn.addEventListener('click', function () {
             removeRequest(doc.id);
           });
-          var completeBtn = card.querySelector('.btn-complete');
-          if (completeBtn) {
-            completeBtn.addEventListener('click', function () {
-              updateRequestStatus(doc.id, 'completed');
-            });
-          }
           listEl.appendChild(card);
         });
       });
@@ -365,23 +348,24 @@ const { UNSAFE_AwaitContextProvider, data } = require("react-router-dom");
           var d = doc.data();
           var card = document.createElement('div');
           card.className = 'request-card';
-          var statusClass = 'status-' + (d.status || 'pending');
-          var statusText = d.status || 'pending';
+          var statusSelect = document.createElement('select');
+          statusSelect.className = 'request-status-select';
+          ['pending', 'matched', 'in progress', 'completed'].forEach(function (s) {
+            var opt = document.createElement('option');
+            opt.value = s;
+            opt.textContent = 'Status: ' + s;
+            opt.selected = (s === (d.status || 'pending'));
+            statusSelect.appendChild(opt);
+          });
+          statusSelect.addEventListener('change', function () {
+            db.collection('tutoringRequests').doc(doc.id).update({ status: statusSelect.value });
+          });
           card.innerHTML =
             '<strong>' + escapeHtml(d.subject) + '</strong> – ' + escapeHtml(d.needDescription || '') +
             '<br>Enrichment: ' + (d.enrichment || '') + ', Urgency: ' + (d.urgency || '') +
             (d.requesterEmail ? '<br><strong>Email: ' + escapeHtml(d.requesterEmail) + '</strong>' : '') +
-            '<br><span class="request-status ' + statusClass + '">Status: ' + statusText + '</span>' +
-            '<p class="meta">' + (d.createdAt ? formatDate(d.createdAt) : '') + '</p>' +
-            (d.status === 'pending' ? '<button type="button" data-request-id="' + escapeHtml(doc.id) + '" data-action="matched">Mark as Matched</button>' : '') +
-            (d.status === 'matched' ? '<button type="button" data-request-id="' + escapeHtml(doc.id) + '" data-action="in-progress">Mark in Progress</button>' : '');
-          var btns = card.querySelectorAll('button');
-          btns.forEach(function (btn) {
-            btn.addEventListener('click', function () {
-              var action = btn.getAttribute('data-action');
-              updateRequestStatus(doc.id, action);
-            });
-          });
+            '<p class="meta">' + (d.createdAt ? formatDate(d.createdAt) : '') + '</p>';
+          card.appendChild(statusSelect);
           listEl.appendChild(card);
         });
       });
@@ -408,18 +392,31 @@ const { UNSAFE_AwaitContextProvider, data } = require("react-router-dom");
           var d = doc.data();
           var card = document.createElement('div');
           card.className = 'request-card';
-          var statusClass = 'status-' + (d.status || 'pending');
-          var statusText = d.status || 'pending';
+          var statusSelect = document.createElement('select');
+          statusSelect.className = 'request-status-select';
+          ['pending', 'matched', 'in progress', 'completed'].forEach(function (s) {
+            var opt = document.createElement('option');
+            opt.value = s;
+            opt.textContent = 'Status: ' + s;
+            opt.selected = (s === (d.status || 'pending'));
+            statusSelect.appendChild(opt);
+          });
+          statusSelect.addEventListener('change', function () {
+            db.collection('tutoringRequests').doc(doc.id).update({ status: statusSelect.value });
+          });
+          var deleteBtn = document.createElement('button');
+          deleteBtn.type = 'button';
+          deleteBtn.textContent = 'Delete';
+          deleteBtn.addEventListener('click', function () {
+            removeRequest(doc.id);
+          });
           card.innerHTML =
             '<strong>' + escapeHtml(d.subject) + '</strong> – ' + escapeHtml(d.needDescription || '') +
             '<br>Enrichment: ' + (d.enrichment || '') + ', Urgency: ' + (d.urgency || '') +
             (d.requesterEmail ? '<br><strong>Email: ' + escapeHtml(d.requesterEmail) + '</strong>' : '') +
-            '<br><span class="request-status ' + statusClass + '">Status: ' + statusText + '</span>' +
-            '<p class="meta">' + (d.createdAt ? formatDate(d.createdAt) : '') + '</p>' +
-            '<button type="button" data-request-id="' + escapeHtml(doc.id) + '">Delete</button>';
-          card.querySelector('button').addEventListener('click', function () {
-            removeRequest(doc.id);
-          });
+            '<p class="meta">' + (d.createdAt ? formatDate(d.createdAt) : '') + '</p>';
+          card.appendChild(statusSelect);
+          card.appendChild(deleteBtn);
           listEl.appendChild(card);
         });
       });
@@ -471,6 +468,70 @@ const { UNSAFE_AwaitContextProvider, data } = require("react-router-dom");
     });
   }
 
+  var subjectChart = null;
+  var statusChart = null;
+
+  function loadAdminStats() {
+    db.collection('tutoringRequests').get().then(function (snap) {
+      var subjectCounts = {};
+      var statusCounts = { pending: 0, matched: 0, 'in progress': 0, completed: 0 };
+      
+      snap.docs.forEach(function (doc) {
+        var d = doc.data();
+        var subj = d.subject || 'Unknown';
+        subjectCounts[subj] = (subjectCounts[subj] || 0) + 1;
+        var status = d.status || 'pending';
+        if (statusCounts.hasOwnProperty(status)) {
+          statusCounts[status]++;
+        }
+      });
+
+      // Subject chart
+      var subjectCtx = document.getElementById('chart-subject');
+      if (subjectCtx) {
+        if (subjectChart) subjectChart.destroy();
+        var labels = Object.keys(subjectCounts);
+        var data = labels.map(function (l) { return subjectCounts[l]; });
+        subjectChart = new Chart(subjectCtx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Number of Requests',
+              data: data,
+              backgroundColor: '#ccc',
+              borderColor: '#999',
+              borderWidth: 1
+            }]
+          },
+          options: { responsive: true, maintainAspectRatio: true }
+        });
+      }
+
+      // Status chart
+      var statusCtx = document.getElementById('chart-status');
+      if (statusCtx) {
+        if (statusChart) statusChart.destroy();
+        var statusLabels = Object.keys(statusCounts);
+        var statusData = statusLabels.map(function (l) { return statusCounts[l]; });
+        statusChart = new Chart(statusCtx, {
+          type: 'doughnut',
+          data: {
+            labels: statusLabels,
+            datasets: [{
+              label: 'Requests by Status',
+              data: statusData,
+              backgroundColor: ['#e8e8e8', '#d0d0d0', '#b8b8b8', '#a0a0a0'],
+              borderColor: '#999',
+              borderWidth: 1
+            }]
+          },
+          options: { responsive: true, maintainAspectRatio: true }
+        });
+      }
+    });
+  }
+
   function formatDate(t) {
     if (!t || !t.toDate) return '';
     var d = t.toDate();
@@ -482,73 +543,6 @@ const { UNSAFE_AwaitContextProvider, data } = require("react-router-dom");
     var div = document.createElement('div');
     div.textContent = s;
     return div.innerHTML;
-  }
-
-  function updateRequestStatus(requestId, newStatus) {
-    db.collection('tutoringRequests').doc(requestId).update({
-      status: newStatus
-    }).catch(function (err) {
-      alert('Could not update status: ' + (err.message || err));
-    });
-  }
-
-  function loadAdminStats() {
-    var statsEl = document.getElementById('admin-stats-content');
-    statsEl.innerHTML = '<p class="empty-msg">Loading statistics…</p>';
-    
-    db.collection('tutoringRequests').get().then(function (snap) {
-      if (snap.empty) {
-        statsEl.innerHTML = '<p class="empty-msg">No requests to analyze.</p>';
-        return;
-      }
-      
-      var bySubject = {};
-      var byStatus = { pending: 0, matched: 0, 'in-progress': 0, completed: 0 };
-      var total = snap.size;
-      
-      snap.docs.forEach(function (doc) {
-        var d = doc.data();
-        var subject = d.subject || 'Unknown';
-        var status = d.status || 'pending';
-        
-        bySubject[subject] = (bySubject[subject] || 0) + 1;
-        byStatus[status] = (byStatus[status] || 0) + 1;
-      });
-      
-      // Calculate completion rate
-      var completionRate = total > 0 ? ((byStatus.completed / total) * 100).toFixed(1) : 0;
-      
-      // Build HTML
-      var html = '<div class=\"stats-section\">';
-      html += '<h3>Overview</h3>';
-      html += '<p><strong>Total Requests:</strong> ' + total + '</p>';
-      html += '<p><strong>Completion Rate:</strong> ' + completionRate + '%</p>';
-      html += '</div>';
-      
-      html += '<div class=\"stats-section\">';
-      html += '<h3>By Status</h3>';
-      html += '<p><strong>Pending:</strong> ' + byStatus.pending + '</p>';
-      html += '<p><strong>Matched:</strong> ' + byStatus.matched + '</p>';
-      html += '<p><strong>In Progress:</strong> ' + byStatus['in-progress'] + '</p>';
-      html += '<p><strong>Completed:</strong> ' + byStatus.completed + '</p>';
-      html += '</div>';
-      
-      html += '<div class=\"stats-section\">';
-      html += '<h3>By Subject</h3>';
-      var subjects = Object.keys(bySubject).sort(function (a, b) {
-        return bySubject[b] - bySubject[a];
-      });
-      subjects.forEach(function (subj) {
-        var count = bySubject[subj];
-        var percentage = ((count / total) * 100).toFixed(1);
-        html += '<p><strong>' + escapeHtml(subj) + ':</strong> ' + count + ' (' + percentage + '%)</p>';
-      });
-      html += '</div>';
-      
-      statsEl.innerHTML = html;
-    }).catch(function (err) {
-      statsEl.innerHTML = '<p class="error">Error loading statistics: ' + escapeHtml(err.message) + '</p>';
-    });
   }
 
   function handleAuthState(user) {
@@ -858,5 +852,3 @@ const { UNSAFE_AwaitContextProvider, data } = require("react-router-dom");
 
   auth.onAuthStateChanged(handleAuthState);
 })();
-
-

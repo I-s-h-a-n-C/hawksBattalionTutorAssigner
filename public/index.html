@@ -10,6 +10,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   <!-- Config: paste your project config from Firebase Console into public/firebase-config.js -->
   <script src="firebase-config.js"></script>
+  <!-- Chart.js for admin stats -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -66,13 +68,14 @@
     <!-- Dashboard -->
     <div id="dashboard-screen" class="screen hidden">
       <div class="dashboard-header">
-        <h1 id="dashboard-title">Dashboard</h1>
+        <h1>Dashboard</h1>
         <button type="button" id="btn-signout">Sign out</button>
       </div>
       <div id="dashboard-student-section" class="hidden">
-        <h2>My requests</h2>
+        <h2>Student Dashboard</h2>
+        <h3>My requests</h3>
         <div id="my-requests-list"></div>
-        <h2>New request</h2>
+        <h3>New request</h3>
         <p><label>Subject <select id="dash-subject"></select></label></p>
         <p><label>Enrichment <select id="dash-enrichment"><option value="">Select</option><option value="A">A</option><option value="D">D</option></select></label></p>
         <p><label>What do you need? <input type="text" id="dash-need" placeholder="e.g. quadratic equations"></label></p>
@@ -81,7 +84,8 @@
         <p id="dash-form-error" class="error"></p>
       </div>
       <div id="dashboard-staff-section" class="hidden">
-        <h2>Classes I tutor</h2>
+        <h2>Staff Dashboard</h2>
+        <h3>Classes I tutor</h3>
         <p>
           <select id="dash-staff-subject-select">
             <option value="">Select...</option>
@@ -92,25 +96,35 @@
         <div id="dash-staff-subjects-list"></div>
         <button type="button" id="btn-dash-staff-save-subjects">Save classes</button>
         <p id="dash-staff-subjects-error" class="error"></p>
-        <h2>Requests in my subjects</h2>
+        <h3>Requests in my subjects</h3>
         <div id="staff-requests-list"></div>
       </div>
       <div id="dashboard-admin-section" class="hidden">
-        <div id="admin-stats-section">
-          <h2>Statistics</h2>
-          <div id="admin-stats-content"></div>
+        <h2>Admin Dashboard</h2>
+        <div id="admin-stats-section" class="hidden">
+          <h3>Statistics</h3>
+          <div class="stats-container">
+            <div class="stat-chart">
+              <h4>Requests by Subject</h4>
+              <canvas id="chart-subject" style="max-width: 100%; max-height: 300px;"></canvas>
+            </div>
+            <div class="stat-chart">
+              <h4>Request Status</h4>
+              <canvas id="chart-status" style="max-width: 100%; max-height: 300px;"></canvas>
+            </div>
+          </div>
         </div>
         <div id="admin-codes-section" class="hidden">
-          <h2>Codes</h2>
+          <h3>Codes</h3>
           <p><label>Staff code <input type="text" id="admin-staff-code" placeholder="Staff code"></label></p>
           <p><label>Admin code <input type="text" id="admin-admin-code" placeholder="Admin code"></label></p>
           <p><label>Instructor code <input type="text" id="admin-instructor-code" placeholder="Instructor code"></label></p>
           <button type="button" id="btn-admin-save-codes">Save codes</button>
           <p id="admin-codes-error" class="error"></p>
         </div>
-        <h2>All requests</h2>
+        <h3>All requests</h3>
         <div id="admin-requests-list"></div>
-        <h2>All users</h2>
+        <h3>All users</h3>
         <div id="admin-users-list"></div>
       </div>
     </div>
