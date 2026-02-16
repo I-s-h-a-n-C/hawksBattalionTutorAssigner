@@ -304,6 +304,7 @@
           card.innerHTML =
             '<strong>' + escapeHtml(d.subject) + '</strong> – ' + escapeHtml(d.needDescription || '') +
             '<br>Enrichment: ' + (d.enrichment || '') + ', Urgency: ' + (d.urgency || '') +
+            (d.requesterEmail ? '<br><strong>Email: ' + escapeHtml(d.requesterEmail) + '</strong>' : '') +
             '<p class="meta">' + (d.createdAt ? 'Added ' + formatDate(d.createdAt) : '') + '</p>' +
             '<button type="button" data-request-id="' + escapeHtml(doc.id) + '">Remove</button>';
           card.querySelector('button').addEventListener('click', function () {
@@ -340,6 +341,7 @@
           card.innerHTML =
             '<strong>' + escapeHtml(d.subject) + '</strong> – ' + escapeHtml(d.needDescription || '') +
             '<br>Enrichment: ' + (d.enrichment || '') + ', Urgency: ' + (d.urgency || '') +
+            (d.requesterEmail ? '<br><strong>Email: ' + escapeHtml(d.requesterEmail) + '</strong>' : '') +
             '<p class="meta">' + (d.createdAt ? formatDate(d.createdAt) : '') + '</p>';
           listEl.appendChild(card);
         });
@@ -370,6 +372,7 @@
           card.innerHTML =
             '<strong>' + escapeHtml(d.subject) + '</strong> – ' + escapeHtml(d.needDescription || '') +
             '<br>Enrichment: ' + (d.enrichment || '') + ', Urgency: ' + (d.urgency || '') +
+            (d.requesterEmail ? '<br><strong>Email: ' + escapeHtml(d.requesterEmail) + '</strong>' : '') +
             '<p class="meta">' + (d.createdAt ? formatDate(d.createdAt) : '') + '</p>' +
             '<button type="button" data-request-id="' + escapeHtml(doc.id) + '">Delete</button>';
           card.querySelector('button').addEventListener('click', function () {
@@ -446,9 +449,14 @@
     }
     getCurrentUserDoc().then(function (snap) {
       if (!snap || !snap.exists) {
-        showOnboardRole();
-        return;
+        // For new users, automatically set them as regular members (not staff)
+        var uid = user.uid;
+        return db.collection('users').doc(uid).set({ isStaff: false }, { merge: true }).then(function () {
+          return db.collection('users').doc(uid).get();
+        });
       }
+      return snap;
+    }).then(function (snap) {
       var data = snap.data();
       if (data.completedOnboarding) {
         showDashboard(snap);
@@ -628,17 +636,21 @@
     }
 
     var uid = auth.currentUser.uid;
+    var email = auth.currentUser.email || '';
     db.collection('tutoringRequests').add({
       userId: uid,
       subject: subject,
       enrichment: enrichment,
       needDescription: need,
       urgency: urgency,
+      requesterEmail: email,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     }).then(function () {
-      db.collection('users').doc(uid).set({ completedOnboarding: true, isStaff: false }, { merge: true }).then(function () {
-        handleAuthState(auth.currentUser);
-      });
+      return db.collection('users').doc(uid).set({ completedOnboarding: true, isStaff: false }, { merge: true });
+    }).then(function () {
+      return getCurrentUserDoc();
+    }).then(function (snap) {
+      showDashboard(snap);
     }).catch(function (err) {
       errEl.textContent = err.message || 'Submit failed';
     });
@@ -717,12 +729,14 @@
       return;
     }
     var uid = auth.currentUser.uid;
+    var email = auth.currentUser.email || '';
     db.collection('tutoringRequests').add({
       userId: uid,
       subject: subject,
       enrichment: enrichment,
       needDescription: need,
       urgency: urgency,
+      requesterEmail: email,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     }).then(function () {
       document.getElementById('dash-need').value = '';
