@@ -1,3 +1,6 @@
+const { SDK_VERSION } = require("firebase/app");
+const { UNSAFE_AwaitContextProvider, data } = require("react-router-dom");
+
 (function () {
   'use strict';
 
@@ -254,10 +257,23 @@
     var studentSection = document.getElementById('dashboard-student-section');
     var staffSection = document.getElementById('dashboard-staff-section');
     var adminSection = document.getElementById('dashboard-admin-section');
+    var titleEl = document.getElementById('dashboard-title');
 
     studentSection.classList.add('hidden');
     staffSection.classList.add('hidden');
     adminSection.classList.add('hidden');
+    
+    // Set dashboard title based on role
+    if (isInstructor) {
+      titleEl.textContent = 'Instructor Dashboard';
+    } else if (isAdmin) {
+      titleEl.textContent = 'Admin Dashboard';
+    } else if (isStaff) {
+      titleEl.textContent = 'Staff Dashboard';
+    } else {
+      titleEl.textContent = 'Member Dashboard';
+    }
+    
     if (isAdmin || isInstructor) adminSection.classList.remove('hidden');
     if (isStaff) staffSection.classList.remove('hidden');
     if (!isAdmin && !isInstructor && !isStaff) studentSection.classList.remove('hidden');
@@ -269,6 +285,7 @@
       if (isInstructor) loadAdminCodes();
       loadAllRequests();
       loadAllUsers(isInstructor);
+      loadAdminStats();
     }
     if (isStaff) {
       dashStaffSubjects = normalizeSubjects(userDoc.get('subjects') || []);
@@ -301,15 +318,25 @@
           var d = doc.data();
           var card = document.createElement('div');
           card.className = 'request-card';
+          var statusClass = 'status-' + (d.status || 'pending');
+          var statusText = d.status || 'pending';
           card.innerHTML =
             '<strong>' + escapeHtml(d.subject) + '</strong> – ' + escapeHtml(d.needDescription || '') +
             '<br>Enrichment: ' + (d.enrichment || '') + ', Urgency: ' + (d.urgency || '') +
             (d.requesterEmail ? '<br><strong>Email: ' + escapeHtml(d.requesterEmail) + '</strong>' : '') +
+            '<br><span class="request-status ' + statusClass + '">Status: ' + statusText + '</span>' +
             '<p class="meta">' + (d.createdAt ? 'Added ' + formatDate(d.createdAt) : '') + '</p>' +
-            '<button type="button" data-request-id="' + escapeHtml(doc.id) + '">Remove</button>';
-          card.querySelector('button').addEventListener('click', function () {
+            '<button type="button" class="btn-remove" data-request-id="' + escapeHtml(doc.id) + '">Remove</button>' +
+            (d.status !== 'completed' ? '<button type="button" class="btn-complete" data-request-id="' + escapeHtml(doc.id) + '">Mark as Met</button>' : '');
+          card.querySelector('.btn-remove').addEventListener('click', function () {
             removeRequest(doc.id);
           });
+          var completeBtn = card.querySelector('.btn-complete');
+          if (completeBtn) {
+            completeBtn.addEventListener('click', function () {
+              updateRequestStatus(doc.id, 'completed');
+            });
+          }
           listEl.appendChild(card);
         });
       });
@@ -338,11 +365,23 @@
           var d = doc.data();
           var card = document.createElement('div');
           card.className = 'request-card';
+          var statusClass = 'status-' + (d.status || 'pending');
+          var statusText = d.status || 'pending';
           card.innerHTML =
             '<strong>' + escapeHtml(d.subject) + '</strong> – ' + escapeHtml(d.needDescription || '') +
             '<br>Enrichment: ' + (d.enrichment || '') + ', Urgency: ' + (d.urgency || '') +
             (d.requesterEmail ? '<br><strong>Email: ' + escapeHtml(d.requesterEmail) + '</strong>' : '') +
-            '<p class="meta">' + (d.createdAt ? formatDate(d.createdAt) : '') + '</p>';
+            '<br><span class="request-status ' + statusClass + '">Status: ' + statusText + '</span>' +
+            '<p class="meta">' + (d.createdAt ? formatDate(d.createdAt) : '') + '</p>' +
+            (d.status === 'pending' ? '<button type="button" data-request-id="' + escapeHtml(doc.id) + '" data-action="matched">Mark as Matched</button>' : '') +
+            (d.status === 'matched' ? '<button type="button" data-request-id="' + escapeHtml(doc.id) + '" data-action="in-progress">Mark in Progress</button>' : '');
+          var btns = card.querySelectorAll('button');
+          btns.forEach(function (btn) {
+            btn.addEventListener('click', function () {
+              var action = btn.getAttribute('data-action');
+              updateRequestStatus(doc.id, action);
+            });
+          });
           listEl.appendChild(card);
         });
       });
@@ -369,10 +408,13 @@
           var d = doc.data();
           var card = document.createElement('div');
           card.className = 'request-card';
+          var statusClass = 'status-' + (d.status || 'pending');
+          var statusText = d.status || 'pending';
           card.innerHTML =
             '<strong>' + escapeHtml(d.subject) + '</strong> – ' + escapeHtml(d.needDescription || '') +
             '<br>Enrichment: ' + (d.enrichment || '') + ', Urgency: ' + (d.urgency || '') +
             (d.requesterEmail ? '<br><strong>Email: ' + escapeHtml(d.requesterEmail) + '</strong>' : '') +
+            '<br><span class="request-status ' + statusClass + '">Status: ' + statusText + '</span>' +
             '<p class="meta">' + (d.createdAt ? formatDate(d.createdAt) : '') + '</p>' +
             '<button type="button" data-request-id="' + escapeHtml(doc.id) + '">Delete</button>';
           card.querySelector('button').addEventListener('click', function () {
@@ -440,6 +482,73 @@
     var div = document.createElement('div');
     div.textContent = s;
     return div.innerHTML;
+  }
+
+  function updateRequestStatus(requestId, newStatus) {
+    db.collection('tutoringRequests').doc(requestId).update({
+      status: newStatus
+    }).catch(function (err) {
+      alert('Could not update status: ' + (err.message || err));
+    });
+  }
+
+  function loadAdminStats() {
+    var statsEl = document.getElementById('admin-stats-content');
+    statsEl.innerHTML = '<p class="empty-msg">Loading statistics…</p>';
+    
+    db.collection('tutoringRequests').get().then(function (snap) {
+      if (snap.empty) {
+        statsEl.innerHTML = '<p class="empty-msg">No requests to analyze.</p>';
+        return;
+      }
+      
+      var bySubject = {};
+      var byStatus = { pending: 0, matched: 0, 'in-progress': 0, completed: 0 };
+      var total = snap.size;
+      
+      snap.docs.forEach(function (doc) {
+        var d = doc.data();
+        var subject = d.subject || 'Unknown';
+        var status = d.status || 'pending';
+        
+        bySubject[subject] = (bySubject[subject] || 0) + 1;
+        byStatus[status] = (byStatus[status] || 0) + 1;
+      });
+      
+      // Calculate completion rate
+      var completionRate = total > 0 ? ((byStatus.completed / total) * 100).toFixed(1) : 0;
+      
+      // Build HTML
+      var html = '<div class=\"stats-section\">';
+      html += '<h3>Overview</h3>';
+      html += '<p><strong>Total Requests:</strong> ' + total + '</p>';
+      html += '<p><strong>Completion Rate:</strong> ' + completionRate + '%</p>';
+      html += '</div>';
+      
+      html += '<div class=\"stats-section\">';
+      html += '<h3>By Status</h3>';
+      html += '<p><strong>Pending:</strong> ' + byStatus.pending + '</p>';
+      html += '<p><strong>Matched:</strong> ' + byStatus.matched + '</p>';
+      html += '<p><strong>In Progress:</strong> ' + byStatus['in-progress'] + '</p>';
+      html += '<p><strong>Completed:</strong> ' + byStatus.completed + '</p>';
+      html += '</div>';
+      
+      html += '<div class=\"stats-section\">';
+      html += '<h3>By Subject</h3>';
+      var subjects = Object.keys(bySubject).sort(function (a, b) {
+        return bySubject[b] - bySubject[a];
+      });
+      subjects.forEach(function (subj) {
+        var count = bySubject[subj];
+        var percentage = ((count / total) * 100).toFixed(1);
+        html += '<p><strong>' + escapeHtml(subj) + ':</strong> ' + count + ' (' + percentage + '%)</p>';
+      });
+      html += '</div>';
+      
+      statsEl.innerHTML = html;
+    }).catch(function (err) {
+      statsEl.innerHTML = '<p class="error">Error loading statistics: ' + escapeHtml(err.message) + '</p>';
+    });
   }
 
   function handleAuthState(user) {
@@ -644,6 +753,7 @@
       needDescription: need,
       urgency: urgency,
       requesterEmail: email,
+      status: 'pending',
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     }).then(function () {
       return db.collection('users').doc(uid).set({ completedOnboarding: true, isStaff: false }, { merge: true });
@@ -737,6 +847,7 @@
       needDescription: need,
       urgency: urgency,
       requesterEmail: email,
+      status: 'pending',
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     }).then(function () {
       document.getElementById('dash-need').value = '';
@@ -747,4 +858,5 @@
 
   auth.onAuthStateChanged(handleAuthState);
 })();
+
 
