@@ -12,6 +12,10 @@
   <script src="firebase-config.js"></script>
   <!-- Chart.js for admin stats -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- jsPDF for exporting statistics -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <!-- EmailJS for automated emails -->
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/index.min.js"></script>
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -68,11 +72,10 @@
     <!-- Dashboard -->
     <div id="dashboard-screen" class="screen hidden">
       <div class="dashboard-header">
-        <h1>Dashboard</h1>
+        <h1 id="dashboard-title">Dashboard</h1>
         <button type="button" id="btn-signout">Sign out</button>
       </div>
       <div id="dashboard-student-section" class="hidden">
-        <h2>Student Dashboard</h2>
         <h3>My requests</h3>
         <div id="my-requests-list"></div>
         <h3>New request</h3>
@@ -84,7 +87,6 @@
         <p id="dash-form-error" class="error"></p>
       </div>
       <div id="dashboard-staff-section" class="hidden">
-        <h2>Staff Dashboard</h2>
         <h3>Classes I tutor</h3>
         <p>
           <select id="dash-staff-subject-select">
@@ -100,19 +102,17 @@
         <div id="staff-requests-list"></div>
       </div>
       <div id="dashboard-admin-section" class="hidden">
-        <h2>Admin Dashboard</h2>
         <div id="admin-stats-section" class="hidden">
           <h3>Statistics</h3>
           <div class="stats-container">
             <div class="stat-chart">
-              <h4>Requests by Subject</h4>
-              <canvas id="chart-subject" style="max-width: 100%; max-height: 300px;"></canvas>
-            </div>
-            <div class="stat-chart">
               <h4>Request Status</h4>
-              <canvas id="chart-status" style="max-width: 100%; max-height: 300px;"></canvas>
+              <canvas id="chart-status" style="max-width: 100%; max-height: 400px;"></canvas>
             </div>
           </div>
+          <button type="button" id="btn-export-stats">Export Statistics PDF</button>
+          <button type="button" id="btn-reset-stats">Reset Statistics</button>
+          <p id="stats-reset-message" class="error"></p>
         </div>
         <div id="admin-codes-section" class="hidden">
           <h3>Codes</h3>

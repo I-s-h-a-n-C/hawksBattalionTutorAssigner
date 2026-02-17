@@ -27,6 +27,19 @@
   var db = firebase.firestore();
   var auth = firebase.auth();
 
+  // EmailJS configuration - Replace with your PUBLIC_KEY from emailjs.com
+  var EMAILJS_PUBLIC_KEY = 'YOUR_PUBLIC_KEY_HERE';
+  var EMAILJS_SERVICE_ID = 'YOUR_SERVICE_ID_HERE';
+  var EMAILJS_TEMPLATE_REQUEST_CREATED = 'template_request_created';
+  var EMAILJS_TEMPLATE_REQUEST_MATCHED = 'template_request_matched';
+  var EMAILJS_TEMPLATE_MATCHED_ADMIN = 'template_matched_admin';
+  var EMAILJS_TEMPLATE_COMPLETED_ADMIN = 'template_completed_admin';
+  
+  // Initialize EmailJS (only if public key is set)
+  if (EMAILJS_PUBLIC_KEY !== 'YOUR_PUBLIC_KEY_HERE') {
+    emailjs.init(EMAILJS_PUBLIC_KEY);
+  }
+
   function getCodes() {
     if (codesCache) return Promise.resolve(codesCache);
     return db.collection('config').doc('codes').get().then(function (snap) {
@@ -251,6 +264,7 @@
     var isInstructor = userDoc && userDoc.get('isInstructor') === true;
     var isStaff = userDoc && userDoc.get('isStaff') === true;
 
+    var dashboardTitle = document.getElementById('dashboard-title');
     var studentSection = document.getElementById('dashboard-student-section');
     var staffSection = document.getElementById('dashboard-staff-section');
     var adminSection = document.getElementById('dashboard-admin-section');
@@ -258,30 +272,39 @@
     studentSection.classList.add('hidden');
     staffSection.classList.add('hidden');
     adminSection.classList.add('hidden');
-    if (isAdmin || isInstructor) adminSection.classList.remove('hidden');
-    if (isStaff) staffSection.classList.remove('hidden');
-    if (!isAdmin && !isInstructor && !isStaff) studentSection.classList.remove('hidden');
-    if (isAdmin || isStaff) studentSection.classList.remove('hidden');
+
+    // Show only ONE dashboard based on highest privilege level
+    if (isInstructor) {
+      dashboardTitle.textContent = 'Instructor Dashboard';
+      adminSection.classList.remove('hidden');
+    } else if (isAdmin) {
+      dashboardTitle.textContent = 'Admin Dashboard';
+      adminSection.classList.remove('hidden');
+    } else if (isStaff) {
+      dashboardTitle.textContent = 'Staff Dashboard';
+      staffSection.classList.remove('hidden');
+    } else {
+      dashboardTitle.textContent = 'Student Dashboard';
+      studentSection.classList.remove('hidden');
+    }
 
     if (isAdmin || isInstructor) {
       var codesSection = document.getElementById('admin-codes-section');
       var statsSection = document.getElementById('admin-stats-section');
+      var resetStatsBtn = document.getElementById('btn-reset-stats');
       if (codesSection) codesSection.classList.toggle('hidden', !isInstructor);
-      if (statsSection) statsSection.classList.toggle('hidden', !isInstructor);
+      if (statsSection) statsSection.classList.remove('hidden');
+      if (resetStatsBtn) resetStatsBtn.classList.toggle('hidden', !isInstructor);
       if (isInstructor) loadAdminCodes();
-      if (isInstructor) loadAdminStats();
+      loadAdminStats();
       loadAllRequests();
       loadAllUsers(isInstructor);
-    }
-    if (isStaff) {
+    } else if (isStaff) {
       dashStaffSubjects = normalizeSubjects(userDoc.get('subjects') || []);
       renderStaffSubjectSelectOptions('dash-staff-subject-select');
       renderStaffSubjectList('dash-staff-subjects-list', dashStaffSubjects);
       loadStaffRequests(userDoc.get('subjects') || []);
-      renderSubjectSelect('dash-subject', true);
-      loadMyRequests();
-    }
-    if (!isAdmin && !isInstructor && !isStaff) {
+    } else {
       renderSubjectSelect('dash-subject', true);
       loadMyRequests();
     }
@@ -315,7 +338,18 @@
           var completeBtn = card.querySelector('[data-action="complete"]');
           var removeBtn = card.querySelector('[data-action="remove"]');
           completeBtn.addEventListener('click', function () {
-            db.collection('tutoringRequests').doc(doc.id).update({ status: 'completed' });
+            if (confirm('Are you sure you want to mark this request as completed?')) {
+              db.collection('tutoringRequests').doc(doc.id).update({ status: 'completed' }).then(function () {
+                // Get current user info and notify admins/instructors
+                var currentUid = auth.currentUser.uid;
+                db.collection('users').doc(currentUid).get().then(function (userDoc) {
+                  var userData = userDoc.data();
+                  // Notify admins/instructors about completion
+                  notifyAdminsAndInstructorsOfCompletion(d.subject, userData.displayName || 'Student');
+                });
+                archiveRequest(doc.id);
+              });
+            }
           });
           removeBtn.addEventListener('click', function () {
             removeRequest(doc.id);
@@ -358,7 +392,38 @@
             statusSelect.appendChild(opt);
           });
           statusSelect.addEventListener('change', function () {
-            db.collection('tutoringRequests').doc(doc.id).update({ status: statusSelect.value });
+            var newStatus = statusSelect.value;
+            if (newStatus === 'completed') {
+              if (!confirm('Are you sure you want to mark this request as completed?')) {
+                statusSelect.value = d.status || 'pending';
+                return;
+              }
+            }
+            db.collection('tutoringRequests').doc(doc.id).update({ status: newStatus }).then(function () {
+              // Send emails based on new status
+              if (newStatus === 'matched') {
+                // Get current user (staff member) info
+                var currentUid = auth.currentUser.uid;
+                db.collection('users').doc(currentUid).get().then(function (staffDoc) {
+                  var staffData = staffDoc.data();
+                  // Notify student
+                  if (d.requesterEmail) {
+                    notifyStudentOfMatch(d.requesterEmail, 'Student', staffData.displayName || 'Staff Member', staffData.email);
+                  }
+                  // Notify admins/instructors
+                  notifyAdminsAndInstructorsOfMatch(d.subject, staffData.displayName || 'Staff Member');
+                });
+              } else if (newStatus === 'completed') {
+                // Get current user info
+                var currentUid = auth.currentUser.uid;
+                db.collection('users').doc(currentUid).get().then(function (staffDoc) {
+                  var staffData = staffDoc.data();
+                  // Notify admins/instructors
+                  notifyAdminsAndInstructorsOfCompletion(d.subject, staffData.displayName || 'Staff Member');
+                });
+                archiveRequest(doc.id);
+              }
+            });
           });
           card.innerHTML =
             '<strong>' + escapeHtml(d.subject) + '</strong> – ' + escapeHtml(d.needDescription || '') +
@@ -371,10 +436,121 @@
       });
   }
 
+  function archiveRequest(id) {
+    db.collection('tutoringRequests').doc(id).get().then(function (doc) {
+      if (!doc.exists) return;
+      var data = doc.data();
+      var subject = data.subject || 'Unknown';
+      
+      // Update stats counters instead of saving full document
+      var statsRef = db.collection('stats').doc('completedRequests');
+      var increment = firebase.firestore.FieldValue.increment(1);
+      var update = {
+        total: increment,
+        lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+      };
+      update['bySubject.' + subject] = increment;
+      
+      return statsRef.set(update, { merge: true }).then(function () {
+        return db.collection('tutoringRequests').doc(id).delete();
+      });
+    }).catch(function (err) {
+      console.error('Could not archive: ' + (err.message || err));
+    });
+  }
+
   function removeRequest(id) {
     db.collection('tutoringRequests').doc(id).delete().catch(function (err) {
       alert('Could not remove: ' + (err.message || err));
     });
+  }
+
+  function sendEmailNotification(templateId, params) {
+    if (EMAILJS_PUBLIC_KEY === 'YOUR_PUBLIC_KEY_HERE') {
+      console.log('EmailJS not configured. Email would have been sent with params:', params);
+      return Promise.resolve();
+    }
+    return emailjs.send(EMAILJS_SERVICE_ID, templateId, params).catch(function (err) {
+      console.error('Email send error:', err);
+    });
+  }
+
+  function notifyStaffOfNewRequest(request, subject) {
+    db.collection('users')
+      .where('isStaff', '==', true)
+      .where('subjects', 'array-contains', subject)
+      .get()
+      .then(function (snap) {
+        snap.docs.forEach(function (doc) {
+          var staffData = doc.data();
+          if (staffData.email) {
+            sendEmailNotification(EMAILJS_TEMPLATE_REQUEST_CREATED, {
+              to_email: staffData.email,
+              staff_name: staffData.displayName || 'Staff Member',
+              subject: subject,
+              student_need: request.needDescription,
+              urgency: request.urgency,
+              enrichment: request.enrichment
+            });
+          }
+        });
+      });
+  }
+
+  function notifyStudentOfUpdate(studentEmail, studentName, requestStatus, tutorName) {
+    sendEmailNotification(EMAILJS_TEMPLATE_REQUEST_MATCHED, {
+      to_email: studentEmail,
+      student_name: studentName,
+      status: requestStatus,
+      tutor_name: tutorName || 'A tutor'
+    });
+  }
+
+  function notifyStudentOfMatch(studentEmail, studentName, staffName, staffEmail) {
+    sendEmailNotification(EMAILJS_TEMPLATE_REQUEST_MATCHED, {
+      to_email: studentEmail,
+      student_name: studentName,
+      staff_name: staffName,
+      staff_email: staffEmail
+    });
+  }
+
+  function notifyAdminsAndInstructorsOfMatch(requestSubject, staffName) {
+    db.collection('users')
+      .where('isAdmin', '==', true)
+      .get()
+      .then(function (snap) {
+        snap.docs.forEach(function (doc) {
+          var userData = doc.data();
+          if (userData.email) {
+            sendEmailNotification(EMAILJS_TEMPLATE_MATCHED_ADMIN, {
+              to_email: userData.email,
+              admin_name: userData.displayName || 'Admin',
+              staff_name: staffName,
+              subject: requestSubject
+            });
+          }
+        });
+      });
+  }
+
+  function notifyAdminsAndInstructorsOfCompletion(requestSubject, staffName) {
+    db.collection('users')
+      .where('isAdmin', '==', true)
+      .get()
+      .then(function (snap) {
+        snap.docs.forEach(function (doc) {
+          var userData = doc.data();
+          if (userData.email) {
+            sendEmailNotification(EMAILJS_TEMPLATE_COMPLETED_ADMIN, {
+              to_email: userData.email,
+              admin_name: userData.displayName || 'Admin',
+              staff_name: staffName,
+              subject: requestSubject
+            });
+          }
+        });
+      });
   }
 
   function loadAllRequests() {
@@ -402,7 +578,38 @@
             statusSelect.appendChild(opt);
           });
           statusSelect.addEventListener('change', function () {
-            db.collection('tutoringRequests').doc(doc.id).update({ status: statusSelect.value });
+            var newStatus = statusSelect.value;
+            if (newStatus === 'completed') {
+              if (!confirm('Are you sure you want to mark this request as completed?')) {
+                statusSelect.value = d.status || 'pending';
+                return;
+              }
+            }
+            db.collection('tutoringRequests').doc(doc.id).update({ status: newStatus }).then(function () {
+              // Send emails based on new status
+              if (newStatus === 'matched') {
+                // Get current user (admin/instructor) info
+                var currentUid = auth.currentUser.uid;
+                db.collection('users').doc(currentUid).get().then(function (adminDoc) {
+                  var adminData = adminDoc.data();
+                  // Notify student
+                  if (d.requesterEmail) {
+                    notifyStudentOfMatch(d.requesterEmail, 'Student', adminData.displayName || 'Staff', adminData.email);
+                  }
+                  // Notify admins/instructors
+                  notifyAdminsAndInstructorsOfMatch(d.subject, adminData.displayName || 'Staff');
+                });
+              } else if (newStatus === 'completed') {
+                // Get current user info
+                var currentUid = auth.currentUser.uid;
+                db.collection('users').doc(currentUid).get().then(function (adminDoc) {
+                  var adminData = adminDoc.data();
+                  // Notify admins/instructors
+                  notifyAdminsAndInstructorsOfCompletion(d.subject, adminData.displayName || 'Staff');
+                });
+                archiveRequest(doc.id);
+              }
+            });
           });
           var deleteBtn = document.createElement('button');
           deleteBtn.type = 'button';
@@ -470,13 +677,74 @@
 
   var subjectChart = null;
   var statusChart = null;
+  var latestStatusCounts = null;
+  var latestStatsUpdatedAt = null;
+
+  function exportAdminStatsPdf() {
+    if (!latestStatusCounts) {
+      alert('Statistics are still loading. Please try again in a moment.');
+      return;
+    }
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+      alert('PDF library is not loaded. Please refresh and try again.');
+      return;
+    }
+
+    var jsPDF = window.jspdf.jsPDF;
+    var pdf = new jsPDF();
+    var y = 20;
+
+    pdf.setFontSize(16);
+    pdf.text('Hawks Battalion Tutoring - Statistics', 14, y);
+    y += 8;
+
+    pdf.setFontSize(11);
+    pdf.text('Generated: ' + new Date().toLocaleString(), 14, y);
+    y += 10;
+
+    pdf.setFontSize(13);
+    pdf.text('Request Status Summary', 14, y);
+    y += 8;
+
+    pdf.setFontSize(11);
+    var total = 0;
+    Object.keys(latestStatusCounts).forEach(function (key) {
+      total += latestStatusCounts[key] || 0;
+    });
+
+    Object.keys(latestStatusCounts).forEach(function (key) {
+      pdf.text(key + ': ' + (latestStatusCounts[key] || 0), 16, y);
+      y += 7;
+    });
+
+    pdf.text('Total Requests: ' + total, 16, y);
+    y += 10;
+
+    if (latestStatsUpdatedAt) {
+      pdf.text('Stats Last Updated: ' + latestStatsUpdatedAt, 14, y);
+      y += 10;
+    }
+
+    var statusCanvas = document.getElementById('chart-status');
+    if (statusCanvas && statusCanvas.toDataURL) {
+      var chartImage = statusCanvas.toDataURL('image/png', 1.0);
+      pdf.addImage(chartImage, 'PNG', 14, y, 180, 90);
+    }
+
+    pdf.save('hawks-tutoring-statistics.pdf');
+  }
 
   function loadAdminStats() {
-    db.collection('tutoringRequests').get().then(function (snap) {
+    Promise.all([
+      db.collection('tutoringRequests').get(),
+      db.collection('stats').doc('completedRequests').get()
+    ]).then(function (results) {
+      var activeSnap = results[0];
+      var statsSnap = results[1];
       var subjectCounts = {};
       var statusCounts = { pending: 0, matched: 0, 'in progress': 0, completed: 0 };
       
-      snap.docs.forEach(function (doc) {
+      activeSnap.docs.forEach(function (doc) {
         var d = doc.data();
         var subj = d.subject || 'Unknown';
         subjectCounts[subj] = (subjectCounts[subj] || 0) + 1;
@@ -486,27 +754,14 @@
         }
       });
 
-      // Subject chart
-      var subjectCtx = document.getElementById('chart-subject');
-      if (subjectCtx) {
-        if (subjectChart) subjectChart.destroy();
-        var labels = Object.keys(subjectCounts);
-        var data = labels.map(function (l) { return subjectCounts[l]; });
-        subjectChart = new Chart(subjectCtx, {
-          type: 'bar',
-          data: {
-            labels: labels,
-            datasets: [{
-              label: 'Number of Requests',
-              data: data,
-              backgroundColor: '#ccc',
-              borderColor: '#999',
-              borderWidth: 1
-            }]
-          },
-          options: { responsive: true, maintainAspectRatio: true }
-        });
+      // Add completed request stats from lightweight counters
+      if (statsSnap.exists) {
+        var statsData = statsSnap.data();
+        statusCounts.completed = statsData.total || 0;
       }
+
+      latestStatusCounts = statusCounts;
+      latestStatsUpdatedAt = new Date().toLocaleString();
 
       // Status chart
       var statusCtx = document.getElementById('chart-status');
@@ -521,12 +776,23 @@
             datasets: [{
               label: 'Requests by Status',
               data: statusData,
-              backgroundColor: ['#e8e8e8', '#d0d0d0', '#b8b8b8', '#a0a0a0'],
-              borderColor: '#999',
-              borderWidth: 1
+              backgroundColor: ['#ffc72c', '#fff9e6', '#ffe4e4', '#c41e3a'],
+              borderColor: '#fff',
+              borderWidth: 3
             }]
           },
-          options: { responsive: true, maintainAspectRatio: true }
+          options: { 
+            responsive: true, 
+            maintainAspectRatio: true,
+            plugins: {
+              legend: {
+                labels: {
+                  color: '#2c2c2c',
+                  font: { weight: 600 }
+                }
+              }
+            }
+          }
         });
       }
     });
@@ -740,7 +1006,7 @@
 
     var uid = auth.currentUser.uid;
     var email = auth.currentUser.email || '';
-    db.collection('tutoringRequests').add({
+    var requestData = {
       userId: uid,
       subject: subject,
       enrichment: enrichment,
@@ -749,8 +1015,15 @@
       requesterEmail: email,
       status: 'pending',
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    }).then(function () {
-      return db.collection('users').doc(uid).set({ completedOnboarding: true, isStaff: false }, { merge: true });
+    };
+    db.collection('tutoringRequests').add(requestData).then(function () {
+      // Send email to staff teaching this subject
+      notifyStaffOfNewRequest(requestData, subject);
+      return db.collection('users').doc(uid).set({ 
+        completedOnboarding: true, 
+        isStaff: false,
+        email: email
+      }, { merge: true });
     }).then(function () {
       return getCurrentUserDoc();
     }).then(function (snap) {
@@ -820,6 +1093,35 @@
     });
   });
 
+  var resetStatsBtnEl = document.getElementById('btn-reset-stats');
+  if (resetStatsBtnEl) {
+    resetStatsBtnEl.addEventListener('click', function () {
+      var msgEl = document.getElementById('stats-reset-message');
+      if (!msgEl) return;
+      msgEl.textContent = '';
+      msgEl.style.color = '';
+      
+      if (!confirm('Are you sure you want to reset all statistics? This will delete all completed request counts and cannot be undone.')) {
+        return;
+      }
+      
+      db.collection('stats').doc('completedRequests').delete().then(function () {
+        msgEl.textContent = 'Statistics reset successfully.';
+        msgEl.style.color = '#080';
+        loadAdminStats();
+      }).catch(function (err) {
+        msgEl.textContent = err.message || 'Reset failed';
+      });
+    });
+  }
+
+  var exportStatsBtnEl = document.getElementById('btn-export-stats');
+  if (exportStatsBtnEl) {
+    exportStatsBtnEl.addEventListener('click', function () {
+      exportAdminStatsPdf();
+    });
+  }
+
   document.getElementById('btn-dash-submit').addEventListener('click', function () {
     var subject = document.getElementById('dash-subject').value;
     var enrichment = document.getElementById('dash-enrichment').value;
@@ -834,7 +1136,7 @@
     }
     var uid = auth.currentUser.uid;
     var email = auth.currentUser.email || '';
-    db.collection('tutoringRequests').add({
+    var requestData = {
       userId: uid,
       subject: subject,
       enrichment: enrichment,
@@ -843,7 +1145,10 @@
       requesterEmail: email,
       status: 'pending',
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    }).then(function () {
+    };
+    db.collection('tutoringRequests').add(requestData).then(function () {
+      // Send email to staff teaching this subject
+      notifyStaffOfNewRequest(requestData, subject);
       document.getElementById('dash-need').value = '';
     }).catch(function (err) {
       errEl.textContent = err.message || 'Add failed';
@@ -852,3 +1157,4 @@
 
   auth.onAuthStateChanged(handleAuthState);
 })();
+
