@@ -1,0 +1,22 @@
+Template ID: template_request_created
+Use this in EmailJS template editor.
+
+Subject:
+New Tutoring Request in {{subject}}
+
+To Email field:
+{{to_email}}
+
+Body:
+Hi {{staff_name}},
+
+A new tutoring request was submitted in {{subject}}.
+
+Student need: {{student_need}}
+Urgency: {{urgency}}
+Enrichment: {{enrichment}}
+
+Please open Hawks Battalion Tutoring to review and accept the request.
+
+Thanks,
+Hawks Battalion Tutoring

@@ -14,7 +14,11 @@ service cloud.firestore {
       return isAdmin() || isInstructor();
     }
     match /users/{userId} {
-      allow read: if request.auth != null && (request.auth.uid == userId || canManageAll());
+      allow read: if request.auth != null && (
+        request.auth.uid == userId
+        || canManageAll()
+        || resource.data.isStaff == true
+      );
       allow create, update: if request.auth != null && request.auth.uid == userId;
       allow delete: if request.auth != null && (
         request.auth.uid == userId

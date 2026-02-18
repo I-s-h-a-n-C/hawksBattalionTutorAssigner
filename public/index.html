@@ -15,7 +15,7 @@
   <!-- jsPDF for exporting statistics -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <!-- EmailJS for automated emails -->
-  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/index.min.js"></script>
+  <script type="text/javascript" src="https://unpkg.com/@emailjs/browser@3/dist/email.min.js"></script>
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -121,6 +121,21 @@
           <p><label>Instructor code <input type="text" id="admin-instructor-code" placeholder="Instructor code"></label></p>
           <button type="button" id="btn-admin-save-codes">Save codes</button>
           <p id="admin-codes-error" class="error"></p>
+        </div>
+        <div id="admin-tutor-section" class="hidden">
+          <h3>Classes I tutor (Admin)</h3>
+          <p>
+            <select id="admin-tutor-subject-select">
+              <option value="">Select...</option>
+            </select>
+            <span id="admin-tutor-custom-wrap" class="hidden"><input type="text" id="admin-tutor-custom-name" placeholder="Class name"></span>
+            <button type="button" id="btn-admin-tutor-add-subject">Add</button>
+          </p>
+          <div id="admin-tutor-subjects-list"></div>
+          <button type="button" id="btn-admin-tutor-save-subjects">Save classes</button>
+          <p id="admin-tutor-subjects-error" class="error"></p>
+          <h3>Requests in my subjects (Admin)</h3>
+          <div id="admin-tutor-requests-list"></div>
         </div>
         <h3>All requests</h3>
         <div id="admin-requests-list"></div>

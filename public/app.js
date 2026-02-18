@@ -27,17 +27,32 @@
   var db = firebase.firestore();
   var auth = firebase.auth();
 
-  // EmailJS configuration - Replace with your PUBLIC_KEY from emailjs.com
-  var EMAILJS_PUBLIC_KEY = 'YOUR_PUBLIC_KEY_HERE';
-  var EMAILJS_SERVICE_ID = 'YOUR_SERVICE_ID_HERE';
-  var EMAILJS_TEMPLATE_REQUEST_CREATED = 'template_request_created';
+  // EmailJS configuration
+  var EMAILJS_PUBLIC_KEY = 'KUer0zNT18YPEJ8u2';
+  var EMAILJS_SERVICE_ID = 'service_9cr1hq9';
   var EMAILJS_TEMPLATE_REQUEST_MATCHED = 'template_request_matched';
   var EMAILJS_TEMPLATE_MATCHED_ADMIN = 'template_matched_admin';
-  var EMAILJS_TEMPLATE_COMPLETED_ADMIN = 'template_completed_admin';
+
+  function isPlaceholder(value, prefix) {
+    if (!value) return true;
+    return String(value).indexOf(prefix) === 0;
+  }
+
+  function isEmailJsReady() {
+    return typeof emailjs !== 'undefined'
+      && !isPlaceholder(EMAILJS_PUBLIC_KEY, 'YOUR_')
+      && !isPlaceholder(EMAILJS_SERVICE_ID, 'YOUR_');
+  }
   
   // Initialize EmailJS (only if public key is set)
-  if (EMAILJS_PUBLIC_KEY !== 'YOUR_PUBLIC_KEY_HERE') {
+  if (isEmailJsReady()) {
     emailjs.init(EMAILJS_PUBLIC_KEY);
+  } else {
+    console.warn('EmailJS init skipped', {
+      emailjsLoaded: typeof emailjs !== 'undefined',
+      hasPublicKey: !isPlaceholder(EMAILJS_PUBLIC_KEY, 'YOUR_'),
+      hasServiceId: !isPlaceholder(EMAILJS_SERVICE_ID, 'YOUR_')
+    });
   }
 
   function getCodes() {
@@ -128,6 +143,7 @@
 
   var staffFormSubjects = [];
   var dashStaffSubjects = [];
+  var adminTutorSubjects = [];
 
   function renderStaffSubjectSelectOptions(selectId) {
     var sel = document.getElementById(selectId);
@@ -292,13 +308,21 @@
       var codesSection = document.getElementById('admin-codes-section');
       var statsSection = document.getElementById('admin-stats-section');
       var resetStatsBtn = document.getElementById('btn-reset-stats');
+      var adminTutorSection = document.getElementById('admin-tutor-section');
       if (codesSection) codesSection.classList.toggle('hidden', !isInstructor);
       if (statsSection) statsSection.classList.remove('hidden');
       if (resetStatsBtn) resetStatsBtn.classList.toggle('hidden', !isInstructor);
+      if (adminTutorSection) adminTutorSection.classList.toggle('hidden', isInstructor);
       if (isInstructor) loadAdminCodes();
       loadAdminStats();
       loadAllRequests();
       loadAllUsers(isInstructor);
+      if (isAdmin && !isInstructor) {
+        adminTutorSubjects = normalizeSubjects(userDoc.get('subjects') || []);
+        renderStaffSubjectSelectOptions('admin-tutor-subject-select');
+        renderStaffSubjectList('admin-tutor-subjects-list', adminTutorSubjects);
+        loadRequestsForSubjects(userDoc.get('subjects') || [], 'admin-tutor-requests-list');
+      }
     } else if (isStaff) {
       dashStaffSubjects = normalizeSubjects(userDoc.get('subjects') || []);
       renderStaffSubjectSelectOptions('dash-staff-subject-select');
@@ -360,7 +384,15 @@
   }
 
   function loadStaffRequests(mySubjects) {
+    return loadRequestsForSubjects(mySubjects, 'staff-requests-list');
+  }
+
+  function loadRequestsForSubjects(mySubjects, listId) {
     var listEl = document.getElementById('staff-requests-list');
+    if (listId) {
+      listEl = document.getElementById(listId);
+    }
+    if (!listEl) return;
     listEl.innerHTML = '<p class="empty-msg">Loading…</p>';
     var subjectNames = getSubjectNames(mySubjects);
     if (subjectNames.length === 0) {
@@ -466,34 +498,67 @@
   }
 
   function sendEmailNotification(templateId, params) {
-    if (EMAILJS_PUBLIC_KEY === 'YOUR_PUBLIC_KEY_HERE') {
-      console.log('EmailJS not configured. Email would have been sent with params:', params);
+    if (!isEmailJsReady()) {
+      console.warn('EmailJS not ready. Email would have been sent with params:', {
+        templateId: templateId,
+        to: params && params.to_email,
+        emailjsLoaded: typeof emailjs !== 'undefined',
+        hasPublicKey: !isPlaceholder(EMAILJS_PUBLIC_KEY, 'YOUR_'),
+        hasServiceId: !isPlaceholder(EMAILJS_SERVICE_ID, 'YOUR_')
+      });
       return Promise.resolve();
     }
-    return emailjs.send(EMAILJS_SERVICE_ID, templateId, params).catch(function (err) {
-      console.error('Email send error:', err);
-    });
+    return emailjs.send(EMAILJS_SERVICE_ID, templateId, params, EMAILJS_PUBLIC_KEY)
+      .then(function (result) {
+        console.log('Email sent:', {
+          templateId: templateId,
+          to: params && params.to_email,
+          status: result && result.status,
+          text: result && result.text
+        });
+        return result;
+      })
+      .catch(function (err) {
+        console.error('Email send error:', {
+          templateId: templateId,
+          to: params && params.to_email,
+          status: err && err.status,
+          text: err && err.text,
+          message: err && err.message,
+          raw: err
+        });
+      });
   }
 
   function notifyStaffOfNewRequest(request, subject) {
     db.collection('users')
       .where('isStaff', '==', true)
-      .where('subjects', 'array-contains', subject)
       .get()
       .then(function (snap) {
+        var recipientCount = 0;
         snap.docs.forEach(function (doc) {
           var staffData = doc.data();
-          if (staffData.email) {
-            sendEmailNotification(EMAILJS_TEMPLATE_REQUEST_CREATED, {
+          var subjectNames = getSubjectNames(staffData.subjects || []);
+          var canTutorSubject = subjectNames.indexOf(subject) !== -1;
+          if (staffData.email && canTutorSubject) {
+            recipientCount++;
+            sendEmailNotification(EMAILJS_TEMPLATE_MATCHED_ADMIN, {
               to_email: staffData.email,
-              staff_name: staffData.displayName || 'Staff Member',
+              recipient_name: staffData.displayName || 'Staff Member',
+              event_title: 'New Tutoring Request',
+              event_summary: 'A new tutoring request was submitted and matches your tutoring subject.',
               subject: subject,
-              student_need: request.needDescription,
-              urgency: request.urgency,
-              enrichment: request.enrichment
+              detail_1_label: 'Student need',
+              detail_1_value: request.needDescription || 'Not provided',
+              detail_2_label: 'Urgency / Enrichment',
+              detail_2_value: (request.urgency || 'N/A') + ' / ' + (request.enrichment || 'N/A'),
+              cta_message: 'Please open Hawks Battalion Tutoring to review and accept this request.'
             });
           }
         });
+        if (recipientCount === 0) {
+          console.warn('No staff recipients found for subject:', subject);
+        }
       });
   }
 
@@ -501,8 +566,11 @@
     sendEmailNotification(EMAILJS_TEMPLATE_REQUEST_MATCHED, {
       to_email: studentEmail,
       student_name: studentName,
-      status: requestStatus,
-      tutor_name: tutorName || 'A tutor'
+      event_title: 'Request Status Updated',
+      event_summary: 'Your tutoring request status has changed.',
+      status: requestStatus || 'updated',
+      staff_name: tutorName || 'A tutor',
+      staff_email: 'Not provided'
     });
   }
 
@@ -510,47 +578,60 @@
     sendEmailNotification(EMAILJS_TEMPLATE_REQUEST_MATCHED, {
       to_email: studentEmail,
       student_name: studentName,
-      staff_name: staffName,
-      staff_email: staffEmail
+      event_title: 'Your Request Was Accepted',
+      event_summary: 'Great news — a tutor has accepted your tutoring request.',
+      status: 'matched',
+      staff_name: staffName || 'A tutor',
+      staff_email: staffEmail || 'Not provided'
+    });
+  }
+
+  function getAdminAndInstructorRecipients() {
+    return db.collection('users').get().then(function (snap) {
+      return snap.docs
+        .map(function (doc) { return doc.data(); })
+        .filter(function (userData) {
+          return (userData && (userData.isAdmin === true || userData.isInstructor === true) && !!userData.email);
+        });
     });
   }
 
   function notifyAdminsAndInstructorsOfMatch(requestSubject, staffName) {
-    db.collection('users')
-      .where('isAdmin', '==', true)
-      .get()
-      .then(function (snap) {
-        snap.docs.forEach(function (doc) {
-          var userData = doc.data();
-          if (userData.email) {
-            sendEmailNotification(EMAILJS_TEMPLATE_MATCHED_ADMIN, {
-              to_email: userData.email,
-              admin_name: userData.displayName || 'Admin',
-              staff_name: staffName,
-              subject: requestSubject
-            });
-          }
+    getAdminAndInstructorRecipients().then(function (recipients) {
+      recipients.forEach(function (userData) {
+        sendEmailNotification(EMAILJS_TEMPLATE_MATCHED_ADMIN, {
+          to_email: userData.email,
+          recipient_name: userData.displayName || 'Admin/Instructor',
+          event_title: 'Request Matched',
+          event_summary: 'A tutoring request has been marked as matched.',
+          subject: requestSubject,
+          detail_1_label: 'Accepted by',
+          detail_1_value: staffName || 'Unknown staff member',
+          detail_2_label: 'Status',
+          detail_2_value: 'matched',
+          cta_message: 'You can review details in the admin/instructor dashboard.'
         });
       });
+    });
   }
 
   function notifyAdminsAndInstructorsOfCompletion(requestSubject, staffName) {
-    db.collection('users')
-      .where('isAdmin', '==', true)
-      .get()
-      .then(function (snap) {
-        snap.docs.forEach(function (doc) {
-          var userData = doc.data();
-          if (userData.email) {
-            sendEmailNotification(EMAILJS_TEMPLATE_COMPLETED_ADMIN, {
-              to_email: userData.email,
-              admin_name: userData.displayName || 'Admin',
-              staff_name: staffName,
-              subject: requestSubject
-            });
-          }
+    getAdminAndInstructorRecipients().then(function (recipients) {
+      recipients.forEach(function (userData) {
+        sendEmailNotification(EMAILJS_TEMPLATE_MATCHED_ADMIN, {
+          to_email: userData.email,
+          recipient_name: userData.displayName || 'Admin/Instructor',
+          event_title: 'Request Completed',
+          event_summary: 'A tutoring request has been marked as completed.',
+          subject: requestSubject,
+          detail_1_label: 'Completed by',
+          detail_1_value: staffName || 'Unknown staff member',
+          detail_2_label: 'Status',
+          detail_2_value: 'completed',
+          cta_message: 'You can review updated statistics in the dashboard.'
         });
       });
+    });
   }
 
   function loadAllRequests() {
@@ -844,6 +925,12 @@
     var provider = new firebase.auth.GoogleAuthProvider();
     document.getElementById('login-error').textContent = '';
     auth.signInWithPopup(provider).catch(function (err) {
+      if (err && (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request' || err.code === 'auth/popup-closed-by-user')) {
+        auth.signInWithRedirect(provider).catch(function (redirectErr) {
+          document.getElementById('login-error').textContent = redirectErr.message || 'Sign-in failed';
+        });
+        return;
+      }
       document.getElementById('login-error').textContent = err.message || 'Sign-in failed';
     });
   });
@@ -1067,6 +1154,46 @@
     });
   });
 
+  var adminTutorSelect = document.getElementById('admin-tutor-subject-select');
+  var adminTutorCustomWrap = document.getElementById('admin-tutor-custom-wrap');
+  if (adminTutorSelect && adminTutorCustomWrap) {
+    adminTutorSelect.addEventListener('change', function () {
+      adminTutorCustomWrap.classList.toggle('hidden', adminTutorSelect.value !== '__custom__');
+    });
+  }
+
+  var adminTutorAddBtn = document.getElementById('btn-admin-tutor-add-subject');
+  if (adminTutorAddBtn) {
+    adminTutorAddBtn.addEventListener('click', function () {
+      var name = getStaffSubjectFromPicker('admin-tutor-subject-select', 'admin-tutor-custom-wrap', 'admin-tutor-custom-name');
+      if (!name) return;
+      if (adminTutorSubjects.some(function (s) { return s.name === name; })) return;
+      adminTutorSubjects.push({ name: name, ap: false });
+      renderStaffSubjectList('admin-tutor-subjects-list', adminTutorSubjects);
+      var sel = document.getElementById('admin-tutor-subject-select');
+      if (sel) sel.value = '';
+      if (adminTutorCustomWrap) adminTutorCustomWrap.classList.add('hidden');
+    });
+  }
+
+  var adminTutorSaveBtn = document.getElementById('btn-admin-tutor-save-subjects');
+  if (adminTutorSaveBtn) {
+    adminTutorSaveBtn.addEventListener('click', function () {
+      var errEl = document.getElementById('admin-tutor-subjects-error');
+      if (!errEl) return;
+      errEl.textContent = '';
+      var uid = auth.currentUser.uid;
+      db.collection('users').doc(uid).update({ subjects: adminTutorSubjects }).then(function () {
+        errEl.textContent = 'Classes saved.';
+        errEl.style.color = '#080';
+        loadRequestsForSubjects(adminTutorSubjects, 'admin-tutor-requests-list');
+      }).catch(function (err) {
+        errEl.style.color = '';
+        errEl.textContent = err.message || 'Save failed';
+      });
+    });
+  }
+
   document.getElementById('btn-admin-save-codes').addEventListener('click', function () {
     var staffCode = document.getElementById('admin-staff-code').value.trim();
     var adminCode = document.getElementById('admin-admin-code').value.trim();
@@ -1074,7 +1201,7 @@
     var errEl = document.getElementById('admin-codes-error');
     errEl.textContent = '';
     if (!staffCode || !adminCode || !instructorCode) {
-      errEl.textContent = 'All three codes are required.';
+      errEl.textContent = 'All three codes are loggid.';
       return;
     }
     db.collection('config').doc('codes').set({
@@ -1157,4 +1284,3 @@
 
   auth.onAuthStateChanged(handleAuthState);
 })();
-

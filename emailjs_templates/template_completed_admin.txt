@@ -1,0 +1,21 @@
+Template ID: template_completed_admin
+Use this in EmailJS template editor.
+
+Subject:
+Request Completed: {{subject}}
+
+To Email field:
+{{to_email}}
+
+Body:
+Hi {{admin_name}},
+
+A tutoring request has been marked as completed.
+
+Subject: {{subject}}
+Completed by: {{staff_name}}
+
+You can review updated statistics in the dashboard.
+
+Thanks,
+Hawks Battalion Tutoring

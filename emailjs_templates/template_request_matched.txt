@@ -1,0 +1,22 @@
+Template ID: template_request_matched
+Use this in EmailJS template editor.
+
+Subject:
+{{event_title}}
+
+To Email field:
+{{to_email}}
+
+Body:
+Hi {{student_name}},
+
+{{event_summary}}
+
+Tutor: {{staff_name}}
+Request status: {{status}}
+Contact email: {{staff_email}}
+
+Please check the app for any additional updates.
+
+Thanks,
+Hawks Battalion Tutoring
