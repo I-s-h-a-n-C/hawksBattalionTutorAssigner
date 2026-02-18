@@ -835,7 +835,7 @@
         }
       });
 
-      // Add completed request stats from lightweight counters
+      // Add completed request stats
       if (statsSnap.exists) {
         var statsData = statsSnap.data();
         statusCounts.completed = statsData.total || 0;
@@ -1000,7 +1000,7 @@
     if (isInstructor) {
       // Instructors: code only, no subjects/enrichment
     } else if (isAdmin) {
-      // Admins must sign up to teach: require full staff form
+      // Admins must sign up to teach
       if (subjects.length === 0) {
         errEl.textContent = 'Select at least one subject.';
         return;
@@ -1284,3 +1284,4 @@
 
   auth.onAuthStateChanged(handleAuthState);
 })();
+
