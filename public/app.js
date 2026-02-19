@@ -144,6 +144,7 @@
   var staffFormSubjects = [];
   var dashStaffSubjects = [];
   var adminTutorSubjects = [];
+  var unsubscribeAuditLogs = null;
 
   function renderStaffSubjectSelectOptions(selectId) {
     var sel = document.getElementById(selectId);
@@ -315,6 +316,7 @@
       if (adminTutorSection) adminTutorSection.classList.toggle('hidden', isInstructor);
       if (isInstructor) loadAdminCodes();
       loadAdminStats();
+      loadAuditLogs();
       loadAllRequests();
       loadAllUsers(isInstructor);
       if (isAdmin && !isInstructor) {
@@ -324,11 +326,19 @@
         loadRequestsForSubjects(userDoc.get('subjects') || [], 'admin-tutor-requests-list');
       }
     } else if (isStaff) {
+      if (unsubscribeAuditLogs) {
+        unsubscribeAuditLogs();
+        unsubscribeAuditLogs = null;
+      }
       dashStaffSubjects = normalizeSubjects(userDoc.get('subjects') || []);
       renderStaffSubjectSelectOptions('dash-staff-subject-select');
       renderStaffSubjectList('dash-staff-subjects-list', dashStaffSubjects);
       loadStaffRequests(userDoc.get('subjects') || []);
     } else {
+      if (unsubscribeAuditLogs) {
+        unsubscribeAuditLogs();
+        unsubscribeAuditLogs = null;
+      }
       renderSubjectSelect('dash-subject', true);
       loadMyRequests();
     }
@@ -432,6 +442,12 @@
               }
             }
             db.collection('tutoringRequests').doc(doc.id).update({ status: newStatus }).then(function () {
+              logActivity('request_status_changed', {
+                requestId: doc.id,
+                subject: d.subject || 'Unknown',
+                status: newStatus,
+                source: listId || 'staff-requests-list'
+              });
               // Send emails based on new status
               if (newStatus === 'matched') {
                 // Get current user (staff member) info
@@ -484,6 +500,12 @@
       update['bySubject.' + subject] = increment;
       
       return statsRef.set(update, { merge: true }).then(function () {
+        logActivity('request_completed_archived', {
+          requestId: id,
+          subject: subject,
+          userId: data.userId || '',
+          requesterEmail: data.requesterEmail || ''
+        });
         return db.collection('tutoringRequests').doc(id).delete();
       });
     }).catch(function (err) {
@@ -492,9 +514,85 @@
   }
 
   function removeRequest(id) {
-    db.collection('tutoringRequests').doc(id).delete().catch(function (err) {
+    db.collection('tutoringRequests').doc(id).delete().then(function () {
+      logActivity('request_removed', { requestId: id });
+    }).catch(function (err) {
       alert('Could not remove: ' + (err.message || err));
     });
+  }
+
+  function logActivity(action, details) {
+    if (!auth.currentUser) return Promise.resolve();
+    var currentUser = auth.currentUser;
+    var uid = currentUser.uid;
+    return db.collection('users').doc(uid).get().then(function (snap) {
+      var userData = snap.exists ? (snap.data() || {}) : {};
+      var role = userData.isInstructor ? 'Instructor' : (userData.isAdmin ? 'Admin' : (userData.isStaff ? 'Staff' : 'Student'));
+      return db.collection('auditLogs').add({
+        action: action,
+        details: details || {},
+        actorUid: uid,
+        actorEmail: currentUser.email || userData.email || '',
+        actorName: currentUser.displayName || userData.displayName || 'Unknown User',
+        actorRole: role,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }).catch(function (err) {
+      console.warn('Audit log write failed:', err && (err.message || err));
+    });
+  }
+
+  function formatAuditDetails(details) {
+    if (!details) return '';
+    var keys = Object.keys(details);
+    if (keys.length === 0) return '';
+    return keys.map(function (key) {
+      var value = details[key];
+      if (value === null || value === undefined) return key + ': -';
+      if (typeof value === 'object') {
+        try {
+          return key + ': ' + JSON.stringify(value);
+        } catch (err) {
+          return key + ': [object]';
+        }
+      }
+      return key + ': ' + String(value);
+    }).join(' | ');
+  }
+
+  function loadAuditLogs() {
+    var listEl = document.getElementById('admin-audit-log-list');
+    if (!listEl) return;
+    if (unsubscribeAuditLogs) {
+      unsubscribeAuditLogs();
+      unsubscribeAuditLogs = null;
+    }
+    listEl.innerHTML = '<p class="empty-msg">Loading…</p>';
+    unsubscribeAuditLogs = db.collection('auditLogs')
+      .orderBy('createdAt', 'desc')
+      .limit(200)
+      .onSnapshot(function (snap) {
+        listEl.innerHTML = '';
+        if (snap.empty) {
+          listEl.innerHTML = '<p class="empty-msg">No activity yet.</p>';
+          return;
+        }
+        snap.docs.forEach(function (doc) {
+          var d = doc.data() || {};
+          var card = document.createElement('div');
+          card.className = 'request-card';
+          var detailsText = formatAuditDetails(d.details);
+          card.innerHTML =
+            '<strong>' + escapeHtml(d.action || 'activity') + '</strong>' +
+            '<br>User: ' + escapeHtml(d.actorName || 'Unknown') + ' (' + escapeHtml(d.actorRole || 'Unknown') + ')' +
+            (d.actorEmail ? '<br>Email: ' + escapeHtml(d.actorEmail) : '') +
+            (detailsText ? '<br><span>' + escapeHtml(detailsText) + '</span>' : '') +
+            '<p class="meta">' + (d.createdAt ? formatDate(d.createdAt) : 'Just now') + '</p>';
+          listEl.appendChild(card);
+        });
+      }, function (err) {
+        listEl.innerHTML = '<p class="error">Could not load activity log: ' + escapeHtml(err && (err.message || err)) + '</p>';
+      });
   }
 
   function sendEmailNotification(templateId, params) {
@@ -667,6 +765,12 @@
               }
             }
             db.collection('tutoringRequests').doc(doc.id).update({ status: newStatus }).then(function () {
+              logActivity('request_status_changed', {
+                requestId: doc.id,
+                subject: d.subject || 'Unknown',
+                status: newStatus,
+                source: 'admin-all-requests'
+              });
               // Send emails based on new status
               if (newStatus === 'matched') {
                 // Get current user (admin/instructor) info
@@ -749,6 +853,7 @@
       batch.delete(db.collection('users').doc(uid));
       return batch.commit();
     }).then(function () {
+      logActivity('user_removed', { userId: uid });
       loadAllUsers();
       loadAllRequests();
     }).catch(function (err) {
@@ -1057,6 +1162,13 @@
       payload.phone = phone || null;
     }
     db.collection('users').doc(uid).set(payload, { merge: true }).then(function () {
+      logActivity('staff_profile_saved', {
+        isAdmin: !!payload.isAdmin,
+        isInstructor: !!payload.isInstructor,
+        isStaff: !!payload.isStaff,
+        subjectsCount: payload.subjects ? payload.subjects.length : 0,
+        enrichment: payload.enrichment || ''
+      });
       return getCurrentUserDoc();
     }).then(function (snap) {
       showDashboard(snap);
@@ -1104,6 +1216,12 @@
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     db.collection('tutoringRequests').add(requestData).then(function () {
+      logActivity('request_created', {
+        subject: subject,
+        enrichment: enrichment,
+        urgency: urgency,
+        source: 'student-onboarding'
+      });
       // Send email to staff teaching this subject
       notifyStaffOfNewRequest(requestData, subject);
       return db.collection('users').doc(uid).set({ 
@@ -1148,6 +1266,10 @@
     db.collection('users').doc(uid).update({ subjects: dashStaffSubjects }).then(function () {
       errEl.textContent = 'Classes saved.';
       errEl.style.color = '#080';
+      logActivity('tutor_subjects_saved', {
+        source: 'staff-dashboard',
+        subjectsCount: dashStaffSubjects.length
+      });
     }).catch(function (err) {
       errEl.style.color = '';
       errEl.textContent = err.message || 'Save failed';
@@ -1186,6 +1308,10 @@
       db.collection('users').doc(uid).update({ subjects: adminTutorSubjects }).then(function () {
         errEl.textContent = 'Classes saved.';
         errEl.style.color = '#080';
+        logActivity('tutor_subjects_saved', {
+          source: 'admin-dashboard',
+          subjectsCount: adminTutorSubjects.length
+        });
         loadRequestsForSubjects(adminTutorSubjects, 'admin-tutor-requests-list');
       }).catch(function (err) {
         errEl.style.color = '';
@@ -1201,7 +1327,7 @@
     var errEl = document.getElementById('admin-codes-error');
     errEl.textContent = '';
     if (!staffCode || !adminCode || !instructorCode) {
-      errEl.textContent = 'All three codes are loggid.';
+      errEl.textContent = 'All three codes are required.';
       return;
     }
     db.collection('config').doc('codes').set({
@@ -1214,6 +1340,9 @@
       errEl.style.color = '';
       errEl.textContent = 'Codes saved.';
       errEl.style.color = '#080';
+      logActivity('codes_updated', {
+        updatedBy: auth.currentUser ? auth.currentUser.uid : ''
+      });
     }).catch(function (err) {
       errEl.style.color = '';
       errEl.textContent = err.message || 'Save failed';
@@ -1235,6 +1364,7 @@
       db.collection('stats').doc('completedRequests').delete().then(function () {
         msgEl.textContent = 'Statistics reset successfully.';
         msgEl.style.color = '#080';
+        logActivity('statistics_reset', {});
         loadAdminStats();
       }).catch(function (err) {
         msgEl.textContent = err.message || 'Reset failed';
@@ -1274,6 +1404,12 @@
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     db.collection('tutoringRequests').add(requestData).then(function () {
+      logActivity('request_created', {
+        subject: subject,
+        enrichment: enrichment,
+        urgency: urgency,
+        source: 'student-dashboard'
+      });
       // Send email to staff teaching this subject
       notifyStaffOfNewRequest(requestData, subject);
       document.getElementById('dash-need').value = '';
@@ -1284,4 +1420,5 @@
 
   auth.onAuthStateChanged(handleAuthState);
 })();
+
 
