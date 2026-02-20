@@ -28,8 +28,8 @@
   var auth = firebase.auth();
 
   // EmailJS configuration
-  var EMAILJS_PUBLIC_KEY = 'KUer0zNT18YPEJ8u2';
-  var EMAILJS_SERVICE_ID = 'service_9cr1hq9';
+  var EMAILJS_PUBLIC_KEY = 'add urs';
+  var EMAILJS_SERVICE_ID = 'add urs';
   var EMAILJS_TEMPLATE_REQUEST_MATCHED = 'template_request_matched';
   var EMAILJS_TEMPLATE_MATCHED_ADMIN = 'template_matched_admin';
 
