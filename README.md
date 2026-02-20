@@ -1,6 +1,6 @@
 # Automated tutor matching system for JROTC battalions
 <img width="1918" height="862" alt="image" src="https://github.com/user-attachments/assets/43d17bbd-2ad9-4177-a3cf-e21efeb483ea" />
-<img width="1918" height="866" alt="image" src="https://github.com/user-attachments/assets/f9f1f6d9-ae86-4edd-a630-1335a426ab7b" />
+<img width="2528" height="1218" alt="image" src="https://github.com/user-attachments/assets/99fcfe41-d9c2-4767-a4d6-423a4c5393e2" />
 
 ## tldr
 
