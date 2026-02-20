@@ -23,8 +23,6 @@ Students can request tutoring help and track session completion.
 - Students see a "Create New Request" button on their dashboard
 - Once matched, they receive an email notification with the staff member's name
 
----
-
 ### 2. **Staff Member**
 Staff members tutor students and update session progress.
 
@@ -38,8 +36,6 @@ Staff members tutor students and update session progress.
 - Requests auto-update in real-time as they accept them
 - Email notifications inform students when a staff member has been matched
 - Staff email is included in the notification sent to students (via EmailJS)
-
----
 
 ### 3. **Admin** (S6 and S3/S3 SGM probably)
 Admins oversee tutoring operations, manage staff class assignments, complete their own tutoring, and monitor all activity.
@@ -78,8 +74,6 @@ Admins oversee tutoring operations, manage staff class assignments, complete the
 - Audit log is **admin-only** (instructors can also view)
 - PDF export includes charts for easy reporting
 
----
-
 ### 4. **Instructor**
 Instructors have read-only access to audit logs and statistics (no tutoring capabilites).
 
@@ -90,9 +84,7 @@ Instructors have read-only access to audit logs and statistics (no tutoring capa
 **Important stuff to remember:**
 - Instructors have max perms, so they can do all that admins can do on top of being able to remove admins.
 
----
-
-## Key Features Explained
+## Key Features
 
 ### **1. Request Matching System**
 When a student creates a request with a subject (e.g., "Biology"), the system automatically notifies all staff members who tutor that subject. Staff can then browse and accept matching requests.
@@ -177,11 +169,7 @@ Every significant user action is logged for compliance and transparency (and JPA
 - Only Admins and Instructors can view logs
 - Logs are live-updated (real-time feed in dashboard)
 
----
-
-## Setup & Deployment
-
-### **Battalion Development**
+## Deploying it for your battalion
 
 1. **Clone the repository**
    ```
@@ -244,8 +232,6 @@ Every significant user action is logged for compliance and transparency (and JPA
 - Deployed to: `https://hawksbtlntutoring-49974.web.app`
 - Files served from `public/` directory
 
----
-
 ## What I used
 
 | Layer | Technology | Note |
@@ -259,8 +245,6 @@ Every significant user action is logged for compliance and transparency (and JPA
 | **Hosting** | Firebase Hosting |
 
 All libraries load via CDN (no build step required).
-
----
 
 ## File Structure
 
