@@ -1420,5 +1420,3 @@
 
   auth.onAuthStateChanged(handleAuthState);
 })();
-
-
